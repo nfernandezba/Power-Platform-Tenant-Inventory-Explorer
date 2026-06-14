@@ -150,3 +150,16 @@ Runtime scope: https://service.powerapps.com//User
 The application calls the preview `listtenantsettings` operation without a request body. Because the endpoint is preview and can be affected by CORS, Conditional Access, or tenant-specific service behaviour, the live query can fail while Inventory continues to work.
 
 Use **Import JSON** in the Tenant Governance tab as the fallback. The file is analysed locally and is not uploaded. The selected baseline changes only the local assessment and never modifies tenant settings.
+
+
+## Environment Management Settings and Not Managed environments
+
+The application deliberately offers Environment Management Settings only for environments explicitly marked as **Managed** by the inventory. Not Managed environments are excluded from the selector, do not trigger API calls, and appear as **Not applicable** in the environment inventory.
+
+For a Managed Environment, a response such as:
+
+```text
+EnvironmentManagementSetting <environment-id> was not found
+```
+
+is treated as **Not configured**, not as a tenant-wide endpoint failure. The environment details remain visible, no write operation is attempted, and the PDF records the state as not explicitly configured.

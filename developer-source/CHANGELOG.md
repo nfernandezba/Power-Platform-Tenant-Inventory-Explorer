@@ -2,6 +2,31 @@
 
 All public releases remain identified as **v1.0** unless the repository owner explicitly requests a version change.
 
+## v1.0 — UX/UI, translations, and responsive mobile refinement
+
+- Completed the Spanish and English navigation translations and aligned terminology across generic interface labels, filters, helper text, and status messages.
+- Standardised the Spanish writing style and corrected inconsistent or ambiguous translations without changing official Microsoft product names.
+- Added explicit, accessible language labels and improved mobile language switching.
+- Replaced horizontally hidden primary and resource navigation tabs with discoverable mobile selectors while preserving the desktop tab experience.
+- Added a compact mobile progress indicator and stacked primary actions on narrow screens.
+- Introduced a dedicated mobile resource-card view with mobile sorting, while retaining the full comparison table on larger screens.
+- Increased mobile touch targets and secondary typography, and prevented page-level horizontal overflow.
+- Added progressive disclosure for secondary dashboard, query, filter, activity, source, and promotional sections on mobile.
+- Added guarded browser-storage access to improve resilience in restricted browsing contexts.
+- Added automated translation parity and wording regression tests.
+- Validated representative layouts at 320, 390, 768, 1,024, and 1,440 px.
+- Kept the public and package versions fixed at v1.0 / 1.0.0.
+
+## v1.0 — Managed Environment Settings eligibility and Spanish terminology
+
+- Limited Environment Management Settings selection and API calls to environments explicitly marked as Managed.
+- Replaced the settings action for Not Managed environments with a clear Not applicable state.
+- Added a selector summary showing Managed environments available and Not Managed environments excluded.
+- Treated `404 EnvironmentManagementSetting ... was not found` as Not configured for Managed Environments instead of a general error.
+- Excluded non-applicable environment settings from the PDF readiness warning and recorded not-configured Managed Environment settings correctly in the PDF.
+- Standardised Spanish terminology on **Gobernanza** across the SPA, PDF, and Spanish documentation.
+- Kept the public and package versions fixed at v1.0 / 1.0.0.
+
 ## v1.0 — Tenant Governance and directory identity resolution
 
 - Added live, read-only Tenant Governance loading through the delegated Power Apps Service `User` permission and runtime scope `https://service.powerapps.com//User`.

@@ -71,7 +71,7 @@ repository/
 Utiliza este mensaje:
 
 ```text
-Add read-only Tenant Governance and resolve resource owner names
+Add read-only Gobernanza del tenant and resolve resource owner names
 ```
 
 Selecciona **Commit directly to the main branch** y pulsa **Commit changes**.
@@ -103,16 +103,19 @@ Este paso elimina filas guardadas con el esquema de caché anterior, que podían
 
 1. Confirma que la interfaz continúa mostrando **v1.0**.
 2. Comprueba que Environments muestra el nombre visible y no el GUID como texto principal.
-3. Abre Environment Settings y confirma que el selector muestra nombres de entorno.
+3. Abre **Ajustes de administración del entorno** y confirma que el selector muestra únicamente Managed Environments.
 4. Carga un tipo de recurso y verifica Name, Environment, Created y Modified.
 5. En un recurso compatible, pulsa **Load** en la columna Connectors.
 6. Comprueba que el detalle muestra conectores y operaciones, o un mensaje claro cuando la API no devuelve datos.
 7. Pulsa **Export PDF** sin cargar todos los datasets y verifica que aparece el cuadro de confirmación.
 8. Prueba **Cancel export** y después **Continue and export**.
 9. En **Resources**, pulsa **Resolver nombres de propietarios** y confirma que los usuarios resolubles muestran nombre completo y user principal name.
-10. Abre **Tenant Governance**, prueba primero la consulta en vivo y después la importación de un JSON local.
-11. Cambia entre los baselines disponibles y confirma que solo cambia la evaluación local.
-12. Comprueba la portada original del libro de Copilot Studio tanto en la SPA como en la última página del PDF.
+10. Abre **Gobernanza del tenant**, prueba primero la consulta en vivo y después la importación de un JSON local.
+11. Abre **Ajustes de administración del entorno** y confirma que solo aparecen Managed Environments.
+12. Verifica que un entorno Not Managed muestre **No aplicable** y no genere una llamada a la API.
+13. Si un Managed Environment no tiene un registro explícito, confirma que aparezca **No configurado** en lugar de error.
+14. Cambia entre los baselines disponibles y confirma que solo cambia la evaluación local.
+15. Comprueba la portada original del libro de Copilot Studio tanto en la SPA como en la última página del PDF.
 
 ## Microsoft Entra
 

@@ -627,3 +627,8 @@ export async function queryEnvironmentSettings(accessToken, environmentId, { sig
     timeoutMs: INVENTORY_QUERY.adminTimeoutMs
   }));
 }
+
+export function isEnvironmentManagementSettingNotFound(error) {
+  const text = [error?.message, error?.details].filter(Boolean).join(" ");
+  return error?.status === 404 && /EnvironmentManagementSetting.+was not found/i.test(text);
+}

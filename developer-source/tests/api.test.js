@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createInventoryQuery, executeInventoryQuery, InventoryApiError, queryDirectoryUsers } from "../src/api.js";
+import { createInventoryQuery, executeInventoryQuery, InventoryApiError, isEnvironmentManagementSettingNotFound, queryDirectoryUsers } from "../src/api.js";
 import { QUERY_RESOURCE_TYPES } from "../src/constants.js";
 
 afterEach(() => {
@@ -73,5 +73,24 @@ describe("Microsoft Graph identity resolution", () => {
     expect(calls).toEqual([20, 1]);
     expect(result.users).toHaveLength(20);
     expect(result.unresolved).toHaveLength(1);
+  });
+});
+
+
+describe("Environment Management Settings not-configured detection", () => {
+  it("treats the documented 404 shape as a valid not-configured outcome", () => {
+    const error = new InventoryApiError("Power Platform API returned HTTP 404.", {
+      status: 404,
+      details: JSON.stringify({ errors: { code: "NotFound", message: "EnvironmentManagementSetting b6730a4c-27d6-eb14-a7ae-78a3940d914d was not found" } })
+    });
+    expect(isEnvironmentManagementSettingNotFound(error)).toBe(true);
+  });
+
+  it("does not hide unrelated 404 responses", () => {
+    const error = new InventoryApiError("Power Platform API returned HTTP 404.", {
+      status: 404,
+      details: JSON.stringify({ error: { code: "NotFound", message: "Environment was not found" } })
+    });
+    expect(isEnvironmentManagementSettingNotFound(error)).toBe(false);
   });
 });

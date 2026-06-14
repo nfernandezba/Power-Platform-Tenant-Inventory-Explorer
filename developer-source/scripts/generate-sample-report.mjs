@@ -28,7 +28,7 @@ const resources = normaliseInventory(
   demoIdentityDirectory
 );
 const summaryCounts = calculateMetrics(firstPass).byType;
-const selectedEnvironmentId = Object.keys(demoEnvironmentDetails)[0];
+const selectedEnvironmentId = environments.find(environment => environment.isManagedEnvironment === true)?.id ?? Object.keys(demoEnvironmentDetails)[0];
 const environmentSettings = {
   selectedId: selectedEnvironmentId,
   details: normaliseEnvironmentDetails(demoEnvironmentDetails[selectedEnvironmentId], selectedEnvironmentId),

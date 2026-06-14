@@ -7,6 +7,23 @@ import {
 import { GRAPH_USER_BASIC_SCOPE, INVENTORY_SCOPE, POWER_APPS_SERVICE_SCOPE, STORAGE_KEYS } from "./constants.js";
 import { getRedirectUri } from "./helpers.js";
 
+function getBrowserStorage(name) {
+  try { return window[name]; }
+  catch { return null; }
+}
+function storageGet(name, key) {
+  try { return getBrowserStorage(name)?.getItem(key) ?? null; }
+  catch { return null; }
+}
+function storageSet(name, key, value) {
+  try { getBrowserStorage(name)?.setItem(key, value); }
+  catch { /* Storage can be disabled by browser or enterprise policy. */ }
+}
+function storageRemove(name, key) {
+  try { getBrowserStorage(name)?.removeItem(key); }
+  catch { /* Storage can be disabled by browser or enterprise policy. */ }
+}
+
 let msalInstance = null;
 
 function buildConfig({ clientId, tenantId }) {
@@ -37,8 +54,8 @@ function buildConfig({ clientId, tenantId }) {
 
 export function loadStoredConfig() {
   const candidates = [
-    sessionStorage.getItem(STORAGE_KEYS.sessionConfig),
-    localStorage.getItem(STORAGE_KEYS.rememberedConfig)
+    storageGet("sessionStorage", STORAGE_KEYS.sessionConfig),
+    storageGet("localStorage", STORAGE_KEYS.rememberedConfig)
   ];
   for (const candidate of candidates) {
     if (!candidate) continue;
@@ -57,14 +74,14 @@ export function saveConfig(config, remember) {
     clientId: String(config.clientId).trim(),
     tenantId: String(config.tenantId).trim()
   };
-  sessionStorage.setItem(STORAGE_KEYS.sessionConfig, JSON.stringify(clean));
-  if (remember) localStorage.setItem(STORAGE_KEYS.rememberedConfig, JSON.stringify(clean));
-  else localStorage.removeItem(STORAGE_KEYS.rememberedConfig);
+  storageSet("sessionStorage", STORAGE_KEYS.sessionConfig, JSON.stringify(clean));
+  if (remember) storageSet("localStorage", STORAGE_KEYS.rememberedConfig, JSON.stringify(clean));
+  else storageRemove("localStorage", STORAGE_KEYS.rememberedConfig);
 }
 
 export function clearStoredConfig({ preserveRemembered = false } = {}) {
-  sessionStorage.removeItem(STORAGE_KEYS.sessionConfig);
-  if (!preserveRemembered) localStorage.removeItem(STORAGE_KEYS.rememberedConfig);
+  storageRemove("sessionStorage", STORAGE_KEYS.sessionConfig);
+  if (!preserveRemembered) storageRemove("localStorage", STORAGE_KEYS.rememberedConfig);
 }
 
 export async function initialiseAuth(config) {

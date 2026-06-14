@@ -98,7 +98,7 @@ The Environments view includes:
 - Environment group context when returned by the API.
 - Aggregated resource count.
 - Direct actions to filter resources for the environment.
-- Direct navigation to Environment Settings for the selected environment.
+- Direct navigation to Environment Management Settings for Managed Environments; Not Managed environments are marked as not applicable.
 
 Environment records and environment groups are loaded independently from detailed resources.
 
@@ -162,9 +162,9 @@ DLP Policies are loaded manually from a separate administrative surface and can 
 
 The application does not assume that an omitted connector is safe or blocked. DLP interpretation must take into account the default connector group and the exact policy scope.
 
-### Environment Settings
+### Environment Management Settings
 
-Environment Settings are loaded for one selected environment at a time to avoid issuing hundreds of calls across a large tenant.
+Environment Management Settings are loaded for one selected **Managed Environment** at a time to avoid issuing hundreds of calls across a large tenant. Not Managed environments are excluded from the selector and do not trigger API calls.
 
 The application performs separate requests for:
 
@@ -181,7 +181,7 @@ The results are grouped into meaningful sections such as:
 - Storage and access controls.
 - Other settings.
 
-The two calls use `Promise.allSettled`, allowing available information to remain visible if one request succeeds and the other fails.
+The two calls use `Promise.allSettled`, allowing available information to remain visible if one request succeeds and the other fails. A `404` stating that `EnvironmentManagementSetting ... was not found` is treated as **Not explicitly configured**, not as an application error. This means the Managed Environment can be using default values or has not initialised this specific settings record.
 
 ### Demonstration mode
 
@@ -223,7 +223,7 @@ The application contains six primary tabs:
 3. **Resources**
 4. **Tenant Governance**
 5. **DLP Policies**
-6. **Environment Settings**
+6. **Environment Management Settings**
 
 When **Resources** is selected, a second navigation row appears for:
 
@@ -326,7 +326,7 @@ The following datasets are never required for the main inventory and are loaded 
 - Tenant Governance.
 - DLP Policies.
 - Environment Details.
-- Environment Settings.
+- Environment Management Settings.
 
 This reduces consent prompts, request volume, page-load time, and the effect of preview or legacy endpoints being unavailable.
 
@@ -444,7 +444,7 @@ The application visibly identifies which source supports each section.
 | Identity names | Microsoft Graph | `/v1.0/$batch` and `/users/{id}` | Manual or silent when consent already exists |
 | Tenant Governance | Business Application Platform API | `listtenantsettings` | Manual |
 | DLP Policies | Business Application Platform administrative API | `apiPolicies` | Manual |
-| Environment Settings | Power Platform Environment Management API | Environment details and settings | Manual per environment |
+| Environment Management Settings | Power Platform Environment Management API | Environment details and settings | Manual per Managed Environment |
 
 ### Inventory endpoint
 
@@ -534,7 +534,7 @@ https://api.powerplatform.com/ResourceQuery.Resources.Read
 
 ### Optional delegated permissions
 
-Environment Settings require:
+Environment Management Settings require:
 
 ```text
 EnvironmentManagement.Environments.Read
@@ -742,7 +742,7 @@ Open:
 
 - **Tenant Governance** and select **Load Tenant Governance** for a live query, or **Import JSON** to analyse a local tenant-settings export.
 - **DLP Policies** and select the load action.
-- **Environment Settings**, select an environment, and load it.
+- **Environment Management Settings**, select a Managed Environment, and load it.
 
 These actions may request additional consent.
 
@@ -820,7 +820,7 @@ Depending on which datasets have been loaded, the report can include:
 - Governance signals.
 - Tenant Governance summary.
 - DLP Policy summary.
-- Environment Settings summary.
+- Environment Management Settings summary.
 - Detailed inventory appendix.
 - Data-source and completeness notes.
 - Known limitations.
@@ -969,7 +969,7 @@ The solution does not contain actions to:
 
 - Change Tenant Governance settings.
 - Create or modify DLP policies.
-- Update Environment Settings.
+- Update Environment Management Settings.
 - Delete resources.
 - Reassign owners.
 - Change licences.
@@ -1436,16 +1436,18 @@ Possible causes include:
 
 The main inventory can continue to function independently.
 
-### Environment Settings fails
+### Environment Management Settings is unavailable or not configured
 
-Check that the App Registration has:
+The application offers this assessment only for environments explicitly marked as **Managed**. Not Managed environments are excluded from the selector and display **Not applicable** in the environment table.
+
+For a Managed Environment, check that the App Registration has:
 
 ```text
 EnvironmentManagement.Environments.Read
 EnvironmentManagement.Settings.Read
 ```
 
-Also verify that the user has access to the selected environment and that the Environment Management preview surface is available.
+Also verify that the user has access to the selected Managed Environment and that the Environment Management surface is available. If the API returns `EnvironmentManagementSetting ... was not found`, the application shows **Not configured** and retains the environment details; no write operation is attempted.
 
 ### Page displays without styling
 

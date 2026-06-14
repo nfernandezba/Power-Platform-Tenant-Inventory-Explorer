@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateMetrics, filterInventory, normaliseInventory, sortInventory } from "../src/data.js";
+import { calculateMetrics, environmentSupportsManagementSettings, filterInventory, normaliseInventory, partitionEnvironmentSettingsTargets, sortInventory } from "../src/data.js";
 
 const raw = [
   {
@@ -112,5 +112,21 @@ describe("calculateMetrics", () => {
     expect(metrics.total).toBe(2);
     expect(metrics.byType.canvasApps).toBe(1);
     expect(metrics.byType.environments).toBe(1);
+  });
+});
+
+
+describe("Environment Management Settings eligibility", () => {
+  it("includes only explicitly Managed Environments", () => {
+    const environments = normaliseInventory([
+      { name: "managed-env", type: "microsoft.powerplatform/environments", displayName: "Managed", isManagedEnvironment: true },
+      { name: "unmanaged-env", type: "microsoft.powerplatform/environments", displayName: "Unmanaged", isManagedEnvironment: false },
+      { name: "unknown-env", type: "microsoft.powerplatform/environments", displayName: "Unknown" }
+    ]);
+    const result = partitionEnvironmentSettingsTargets(environments);
+    expect(result.managed.map(item => item.id)).toEqual(["managed-env"]);
+    expect(result.excluded.map(item => item.id).sort()).toEqual(["unknown-env", "unmanaged-env"]);
+    expect(environmentSupportsManagementSettings(result.managed[0])).toBe(true);
+    expect(environmentSupportsManagementSettings(result.excluded[0])).toBe(false);
   });
 });

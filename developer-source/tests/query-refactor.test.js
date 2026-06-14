@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createEnvironmentCountQuery,
@@ -66,6 +67,17 @@ describe("modular inventory queries", () => {
     const resourceProjectIndex = resourceClauses.findIndex(clause => clause.$type === "project");
     expect(resourceClauses[resourceOrderIndex].FieldNamesAscDesc).toEqual({ modifiedDate: "desc" });
     expect(resourceOrderIndex).toBeLessThan(resourceProjectIndex);
+  });
+
+
+  it("blocks Environment Management Settings calls for Not Managed environments", () => {
+    const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+    const eligibilityGuard = appSource.indexOf("if (!environmentSupportsManagementSettings(environment))");
+    const tokenRequest = appSource.indexOf("acquirePowerPlatformToken([POWER_PLATFORM_SCOPES.environments, POWER_PLATFORM_SCOPES.environmentSettings])", eligibilityGuard);
+    expect(eligibilityGuard).toBeGreaterThan(-1);
+    expect(tokenRequest).toBeGreaterThan(eligibilityGuard);
+    expect(appSource).toContain("const { managed, excluded } = partitionEnvironmentSettingsTargets(environments)");
+    expect(appSource).toContain("managed.map(env =>");
   });
 
   it("creates independent resource type and detail queries", () => {

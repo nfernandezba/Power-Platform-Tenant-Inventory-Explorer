@@ -58,12 +58,13 @@ function getPdfStrings(language, strings) {
     tenantId: "Tenant ID",
     lastRefresh: "Ultima actualizacion",
     kpis: "Indicadores principales",
-    governance: "Senales de gobierno",
-    adminSources: "Gobierno, DLP y configuracion de entorno",
-    tenantGovernance: "Tenant Governance",
+    governance: "Senales de gobernanza",
+    adminSources: "Gobernanza, DLP y ajustes de administracion del entorno",
+    tenantGovernance: "Gobernanza del tenant",
     dlpPolicies: "DLP Policies",
-    environmentSettings: "Environment Settings",
-    loadedSettings: "Configuraciones cargadas",
+    environmentSettings: "Ajustes de administracion del entorno",
+    loadedSettings: "Ajustes cargados",
+    settingsNotConfigured: "No configurado explicitamente",
     policies: "Politicas",
     blockedPolicies: "Politicas con conectores bloqueados",
     distribution: "Distribucion por tipo de recurso",
@@ -73,7 +74,7 @@ function getPdfStrings(language, strings) {
     appendixNote: `El anexo incluye hasta ${PDF_DETAIL_LIMIT} registros de la vista filtrada y ordenada. Utilice la exportacion CSV para obtener el detalle completo.`,
     limitations: "Acerca de los datos y sus limitaciones",
     books: "Profundiza el modelo con estos libros",
-    booksCopy: "Continua desarrollando tu Centro de Excelencia, la estrategia de Power Platform y el gobierno de Copilot Studio.",
+    booksCopy: "Continua desarrollando tu Centro de Excelencia, la estrategia de Power Platform y la gobernanza de Copilot Studio.",
     viewAmazon: "Ver en Amazon",
     linkedin: "LinkedIn de Nico Fernandez",
     reportFooter: `CoE Toolkit | Nico Fernandez | v${APP_VERSION}`,
@@ -110,6 +111,7 @@ function getPdfStrings(language, strings) {
     dlpPolicies: "DLP Policies",
     environmentSettings: "Environment Settings",
     loadedSettings: "Settings loaded",
+    settingsNotConfigured: "Not explicitly configured",
     policies: "Policies",
     blockedPolicies: "Policies with blocked connectors",
     distribution: "Distribution by resource type",
@@ -538,8 +540,12 @@ export function createInventoryPdf(items, options = {}) {
     if (environmentSettings) {
       section(p.environmentSettings, colours.blue);
       const groupCounts = Object.entries(environmentSettings.groups ?? {}).map(([key, values]) => ({ label: strings[key] ?? key, count: values.length }));
-      paragraph(`${environmentSettings.details?.displayName ?? "Environment"} | ${p.loadedSettings}: ${groupCounts.reduce((sum, item) => sum + item.count, 0)}`, 8.2);
-      barList(groupCounts, 8);
+      if (environmentSettings.settingsNotConfigured) {
+        paragraph(`${environmentSettings.details?.displayName ?? "Environment"} | ${p.settingsNotConfigured}`, 8.2);
+      } else {
+        paragraph(`${environmentSettings.details?.displayName ?? "Environment"} | ${p.loadedSettings}: ${groupCounts.reduce((sum, item) => sum + item.count, 0)}`, 8.2);
+        barList(groupCounts, 8);
+      }
     }
     footer();
   }

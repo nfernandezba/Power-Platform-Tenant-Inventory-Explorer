@@ -12,6 +12,17 @@ describe("PDF export", () => {
   });
 
 
+  it("uses Gobernanza consistently in the Spanish interface and PDF", () => {
+    expect(translations.es.governanceSignals).toContain("gobernanza");
+    expect(translations.es.tenantGovernance).toContain("Gobernanza");
+    expect(translations.es.baseline_balanced).toContain("Gobernanza");
+    const deprecatedTerm = ["gob", "ierno"].join("");
+    expect(translations.es.governanceSignals.toLowerCase()).not.toContain(deprecatedTerm);
+    const pdfSource = readFileSync(new URL("../src/pdf-export.js", import.meta.url), "utf8");
+    expect(pdfSource).toContain("Senales de gobernanza");
+    expect(pdfSource).not.toContain(`Senales de ${deprecatedTerm}`);
+  });
+
   it("keeps the public version fixed at v1.0", () => {
     expect(APP_VERSION).toBe("1.0");
   });

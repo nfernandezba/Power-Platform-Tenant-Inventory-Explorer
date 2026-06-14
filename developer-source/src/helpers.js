@@ -14,7 +14,8 @@ export function escapeHtml(value) {
 }
 
 export function getRedirectUri() {
-  const url = new URL("./", window.location.href);
+  const base = window.location.protocol === "about:" ? document.baseURI : window.location.href;
+  const url = new URL("./", base);
   url.search = "";
   url.hash = "";
   return url.href;

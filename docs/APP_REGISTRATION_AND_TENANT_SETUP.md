@@ -465,14 +465,16 @@ Expected result:
 
 DLP interpretation must consider policy scope and the default connector group; an omitted connector must not automatically be treated as blocked or safe.
 
-### Environment Settings
+### Environment Management Settings
 
 Expected result:
 
-1. Select an environment.
-2. Load its settings.
-3. Environment details and management settings are requested independently.
-4. Available results remain visible if only one of the two requests succeeds.
+1. Only environments explicitly marked as **Managed** appear in the selector.
+2. Not Managed environments show **Not applicable** in the environment inventory and do not trigger API calls.
+3. Select a Managed Environment and load its settings.
+4. Environment details and management settings are requested independently.
+5. Available results remain visible if only one request succeeds.
+6. A `404 EnvironmentManagementSetting ... was not found` is displayed as **Not configured**, not as a failure.
 
 Confirm both environment permissions when this tab returns `403`.
 
@@ -651,9 +653,9 @@ Check:
 
 Do not add a client secret to solve a browser CORS or delegated-consent issue.
 
-### Environment Settings returns partial information
+### Environment Management Settings returns partial information
 
-The tool deliberately uses independent requests for environment details and settings. A partial result means one endpoint succeeded and the other failed. Review the status shown for each request and verify both environment permissions.
+The tool deliberately uses independent requests for environment details and settings. A partial result means one endpoint succeeded and the other failed. Review the status shown for each request and verify both environment permissions. Not Managed environments are outside this assessment. For a Managed Environment, a missing `EnvironmentManagementSetting` record is reported as **Not configured** and is not treated as an error.
 
 ### The page remains on an older release
 
@@ -730,12 +732,12 @@ La aplicación utiliza varias fuentes de datos independientes:
 |---|---|---|---|
 | Overview, Resources y recuentos | Power Platform Inventory API | Permiso delegado `ResourceQuery.Resources.Read` | Sí |
 | Lista y detalle de entornos | Power Platform API | Permiso delegado `EnvironmentManagement.Environments.Read` | Recomendado |
-| Environment Settings | Power Platform API | Permiso delegado `EnvironmentManagement.Settings.Read` | Opcional |
+| Ajustes de administración del entorno | Power Platform API | Permiso delegado `EnvironmentManagement.Settings.Read` | Opcional |
 | Nombres de owner, creator y modifier | Microsoft Graph | Permiso delegado `User.ReadBasic.All` | Opcional pero recomendado |
-| Tenant Governance | Endpoint administrativo heredado de Power Apps Service / Business Application Platform | Permiso delegado `User` de Power Apps Service, usuario administrador y políticas del tenant que permitan el acceso | Opcional / best effort |
+| Gobernanza del tenant | Endpoint administrativo heredado de Power Apps Service / Business Application Platform | Permiso delegado `User` de Power Apps Service, usuario administrador y políticas del tenant que permitan el acceso | Opcional / best effort |
 | DLP Policies | Endpoint administrativo heredado de Power Apps Service / Business Application Platform | Permiso delegado `User` de Power Apps Service, usuario administrador y políticas del tenant que permitan el acceso | Opcional / best effort |
 
-El inventario principal es independiente de las consultas opcionales de Tenant Governance y DLP. Si una fuente administrativa opcional falla, el inventario principal puede continuar funcionando.
+El inventario principal es independiente de las consultas opcionales de Gobernanza del tenant y DLP. Si una fuente administrativa opcional falla, el inventario principal puede continuar funcionando.
 
 ## 2. Requisitos previos
 
@@ -945,7 +947,7 @@ Procedimiento recomendado:
    - `EnvironmentManagement.Settings.Read`
 6. Pulsa **Add permissions**.
 
-El Overview y Resources pueden funcionar sin estos permisos opcionales, pero Environment Settings devolverá un error de autorización.
+El Overview y Resources pueden funcionar sin estos permisos opcionales, pero Ajustes de administración del entorno devolverá un error de autorización.
 
 ## 9. Conceder consentimiento administrativo
 
@@ -975,7 +977,7 @@ El conjunto recomendado es:
 | Power Platform API | `EnvironmentManagement.Environments.Read` | Delegated | Lista y detalle de entornos |
 | Power Platform API | `EnvironmentManagement.Settings.Read` | Delegated | Lectura de Environment Settings |
 | Microsoft Graph | `User.ReadBasic.All` | Delegated | Resolver object IDs de usuarios a nombres de perfil básico |
-| Power Apps Service | `User` | Delegated | Consultas administrativas en vivo de Tenant Governance y DLP |
+| Power Apps Service | `User` | Delegated | Consultas administrativas en vivo de Gobernanza del tenant y DLP |
 
 No añadas permisos de escritura. No añadas permisos de aplicación. No crees un Client Secret.
 
@@ -1048,9 +1050,9 @@ Una política puede permitir el inicio de sesión inicial y bloquear posteriorme
 
 Comprueba también que proxies corporativos, secure web gateways, extensiones del navegador y filtros de contenido permitan solicitudes HTTPS cross-origin desde GitHub Pages hacia los endpoints de Microsoft.
 
-## 13. Configurar el acceso opcional a Tenant Governance y DLP
+## 13. Configurar el acceso opcional a Gobernanza del tenant y DLP
 
-Los tabs **Tenant Governance** y **DLP Policies** utilizan endpoints administrativos heredados de Power Apps Service / Business Application Platform bajo:
+Los tabs **Gobernanza del tenant** y **DLP Policies** utilizan endpoints administrativos heredados de Power Apps Service / Business Application Platform bajo:
 
 ```text
 https://api.bap.microsoft.com
@@ -1072,21 +1074,21 @@ Para habilitar las consultas en vivo, añade la API first-party **Power Apps Ser
 7. Pulsa **Add permissions**.
 8. Concede consentimiento administrativo de acuerdo con la política del tenant.
 
-En ejecución, la aplicación solicita este scope solamente al cargar Governance o DLP:
+En ejecución, la aplicación solicita este scope solamente al cargar Gobernanza del tenant o DLP:
 
 ```text
 https://service.powerapps.com//User
 ```
 
-Tenant Governance invoca la operación preview `listtenantsettings` sin request body. El tab ofrece tres baselines locales —Gobierno equilibrado, Empresa restrictiva e Innovation-first— y permanece estrictamente read-only. El baseline solo modifica la interpretación local y no cambia el tenant.
+Gobernanza del tenant invoca la operación preview `listtenantsettings` sin request body. El tab ofrece tres baselines locales —Gobernanza equilibrada, Empresa restrictiva e Innovation-first— y permanece estrictamente read-only. El baseline solo modifica la interpretación local y no cambia el tenant.
 
-Como el endpoint está en preview y el acceso directo desde el navegador puede verse afectado por CORS, Conditional Access o diferencias del servicio, Tenant Governance también permite **Importar JSON**. El archivo se procesa localmente en el navegador y no se envía al propietario del repositorio ni a otro servicio.
+Como el endpoint está en preview y el acceso directo desde el navegador puede verse afectado por CORS, Conditional Access o diferencias del servicio, Gobernanza del tenant también permite **Importar JSON**. El archivo se procesa localmente en el navegador y no se envía al propietario del repositorio ni a otro servicio.
 
 Consideraciones importantes:
 
 1. DLP y tenant settings son fuentes separadas del Inventory API principal.
 2. El acceso depende del alcance administrativo del usuario, el consentimiento y Conditional Access.
-3. Si DLP o Tenant Governance fallan, Overview y Resources pueden continuar funcionando correctamente.
+3. Si DLP o Gobernanza del tenant fallan, Overview y Resources pueden continuar funcionando correctamente.
 4. La aplicación no solicita permisos de escritura ni modifica tenant settings o políticas DLP.
 
 ## 14. Ejecutar la aplicación contra el tenant
@@ -1146,7 +1148,7 @@ Resultado esperado:
 
 La API utiliza paginación de Azure Resource Graph y devuelve `skipToken` cuando hay resultados adicionales.
 
-### Tenant Governance
+### Gobernanza del tenant
 
 Resultado esperado:
 
@@ -1167,14 +1169,16 @@ Resultado esperado:
 
 La interpretación debe considerar el scope de la política y el grupo predeterminado. Un conector no enumerado no debe considerarse automáticamente seguro o bloqueado.
 
-### Environment Settings
+### Ajustes de administración del entorno
 
 Resultado esperado:
 
-1. Selecciona un entorno.
-2. Ejecuta la carga de settings.
-3. El detalle del entorno y los management settings se solicitan de forma independiente.
-4. Los resultados disponibles se mantienen visibles aunque una de las dos llamadas falle.
+1. En el selector aparecen únicamente los entornos marcados explícitamente como **Managed**.
+2. Los entornos Not Managed muestran **No aplicable** en el inventario y no generan llamadas a la API.
+3. Selecciona un Managed Environment y carga sus ajustes.
+4. El detalle del entorno y los management settings se solicitan de forma independiente.
+5. Los resultados disponibles se mantienen visibles aunque una llamada falle.
+6. Un `404 EnvironmentManagementSetting ... was not found` se muestra como **No configurado**, no como error.
 
 Confirma los dos permisos de Environment Management cuando el tab devuelve `403`.
 
@@ -1192,11 +1196,11 @@ Después del primer despliegue, realiza esta validación:
 8. Abre Environments y selecciona un entorno conocido.
 9. Carga Environment Settings.
 10. Pulsa **Resolver nombres de propietarios** y confirma que los GUIDs de usuarios resolubles pasan a mostrar nombres.
-11. Carga Tenant Governance y prueba un segundo baseline.
+11. Carga Gobernanza del tenant y prueba un segundo baseline.
 12. Importa un JSON de tenant settings y confirma que la fuente cambia a JSON importado.
 13. Carga DLP Policies.
 14. Exporta CSV, JSON y PDF.
-15. Comprueba que el PDF muestra nombres resueltos, fuente/baseline de Governance y las portadas de los libros.
+15. Comprueba que el PDF muestra nombres resueltos, fuente/baseline de Gobernanza y las portadas de los libros.
 16. Cierra sesión.
 17. En un equipo compartido, pulsa **Clear cache** para eliminar el inventario almacenado localmente.
 
@@ -1216,7 +1220,7 @@ Antes de compartir la URL con administradores, verifica:
 - [ ] Public client flow está deshabilitado.
 - [ ] Solo se han configurado permisos delegados de lectura.
 - [ ] Está presente `ResourceQuery.Resources.Read`.
-- [ ] Los permisos de Environment Management están presentes cuando se requiere Environment Settings.
+- [ ] Los permisos de Environment Management están presentes cuando se requieren Ajustes de administración del entorno.
 - [ ] El consentimiento administrativo está concedido.
 - [ ] Los usuarios tienen Power Platform Administrator o Dynamics 365 Administrator.
 - [ ] La asignación de usuarios de la Enterprise Application está configurada de manera intencionada.
@@ -1332,11 +1336,11 @@ Puedes:
 - asignar el usuario o un grupo de seguridad en **Users and groups**, o
 - cambiar de forma intencionada **Assignment required?** a **No**.
 
-### El navegador bloquea la ventana de DLP, Governance o Settings
+### El navegador bloquea la ventana de DLP, Gobernanza o Settings
 
 Los datasets opcionales utilizan una ventana interactiva cuando se necesita consentimiento adicional. Permite popups para el origen de GitHub Pages y vuelve a ejecutar la consulta individual.
 
-### Overview funciona pero DLP o Tenant Governance falla
+### Overview funciona pero DLP o Gobernanza del tenant falla
 
 Es posible porque las fuentes son independientes.
 
@@ -1351,9 +1355,9 @@ Revisa:
 
 No añadas un Client Secret para intentar resolver un problema CORS o de consentimiento delegado en el navegador.
 
-### Environment Settings devuelve información parcial
+### Ajustes de administración del entorno devuelve información parcial
 
-La herramienta realiza llamadas independientes para detalle y settings. Un resultado parcial indica que una llamada funcionó y otra falló. Revisa el estado de cada llamada y verifica ambos permisos de Environment Management.
+La herramienta realiza llamadas independientes para detalle y settings. Un resultado parcial indica que una llamada funcionó y otra falló. Revisa el estado de cada llamada y verifica ambos permisos de Environment Management. Los entornos Not Managed quedan fuera de esta evaluación. En un Managed Environment, la ausencia del registro `EnvironmentManagementSetting` se muestra como **No configurado** y no se trata como error.
 
 ### La página continúa mostrando una versión anterior
 

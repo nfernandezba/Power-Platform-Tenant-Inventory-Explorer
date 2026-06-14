@@ -472,6 +472,20 @@ export function buildEnvironmentRowsFromSummary(environmentItems, summary = null
       || String(a.displayName || a.id).localeCompare(String(b.displayName || b.id), undefined, { sensitivity: "base" }));
 }
 
+export function environmentSupportsManagementSettings(environment) {
+  return environment?.isManagedEnvironment === true;
+}
+
+export function partitionEnvironmentSettingsTargets(environments = []) {
+  const managed = [];
+  const excluded = [];
+  for (const environment of environments) {
+    if (environmentSupportsManagementSettings(environment)) managed.push(environment);
+    else excluded.push(environment);
+  }
+  return { managed, excluded };
+}
+
 export function mergeUniqueResources(...datasets) {
   const byKey = new Map();
   for (const item of datasets.flat()) {
