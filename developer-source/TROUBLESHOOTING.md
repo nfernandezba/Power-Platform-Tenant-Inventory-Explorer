@@ -115,3 +115,38 @@ EnvironmentManagement.Settings.Read
 ## Governance or DLP fails
 
 Those sections use a separate Business Application Platform administrative surface and can fail independently because of consent, role, preview/legacy availability, CORS, or network policies.
+
+## Owner, creator, or modifier still appears as a GUID
+
+Power Platform Inventory returns these identity fields as Microsoft Entra object IDs. The application resolves user objects through Microsoft Graph only after the delegated permission below is available:
+
+```text
+User.ReadBasic.All
+```
+
+Check the following:
+
+1. Add Microsoft Graph `User.ReadBasic.All` as a **delegated** permission on the App Registration.
+2. Grant admin consent when required by the tenant policy.
+3. In **Resources**, select **Resolve owner names** or **Refresh names**.
+4. Allow the Microsoft Graph consent popup.
+5. Clear the browser cache and retry if an earlier unresolved result was cached.
+
+The resolver requests users in JSON batches and stores only their basic profile labels locally. A GUID can legitimately remain when the object represents a service principal, team, deleted account, or another directory object that cannot be returned from the `/users` endpoint.
+
+## Tenant Governance live query asks for consent or fails
+
+Live Tenant Governance requires **Power Apps Service**, not Power Platform API alone.
+
+Add this first-party resource to the App Registration:
+
+```text
+Power Apps Service
+Application ID: 475226c6-020e-4fb2-8a90-7a972cbfc1d4
+Delegated permission: User — Access the Power Apps Service API
+Runtime scope: https://service.powerapps.com//User
+```
+
+The application calls the preview `listtenantsettings` operation without a request body. Because the endpoint is preview and can be affected by CORS, Conditional Access, or tenant-specific service behaviour, the live query can fail while Inventory continues to work.
+
+Use **Import JSON** in the Tenant Governance tab as the fallback. The file is analysed locally and is not uploaded. The selected baseline changes only the local assessment and never modifies tenant settings.

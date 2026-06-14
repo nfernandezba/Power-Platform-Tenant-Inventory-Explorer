@@ -8,7 +8,8 @@ This application is a browser-based public client. It must never contain a clien
 - OAuth 2.0 Authorization Code Flow with PKCE through `@azure/msal-browser`.
 - Required delegated scope: `ResourceQuery.Resources.Read`.
 - Optional delegated scopes: `EnvironmentManagement.Environments.Read` and `EnvironmentManagement.Settings.Read`.
-- Optional BAP resource token: `https://api.bap.microsoft.com/.default`, requested only for Tenant Governance and DLP.
+- Optional Power Apps Service delegated scope: `https://service.powerapps.com//User`, requested only for live Tenant Governance and DLP queries.
+- Optional Microsoft Graph delegated scope: `User.ReadBasic.All`, requested only to resolve owner, creator, and modifier user IDs to basic profile names.
 - MSAL cache: `sessionStorage`.
 - Client ID and Tenant ID may optionally be remembered because they are public identifiers.
 
@@ -22,7 +23,7 @@ Large resource queries execute sequentially. Page limits and repeated-token dete
 
 The application can store retrieved tenant inventory in the browser's IndexedDB to reduce repeated downloads. Cache keys are scoped by Tenant ID and dataset. Access tokens are never stored in IndexedDB.
 
-Cached inventory may contain internal resource names, owner object IDs, environment identifiers, connector identifiers, and timestamps. On shared or unmanaged devices, users should select **Clear cache** before leaving. Disconnecting the Microsoft account ends the authenticated session but does not silently delete previously cached inventory.
+Cached inventory may contain internal resource names, owner object IDs, resolved basic user profile values (display name, user principal name, and mail), environment identifiers, connector identifiers, and timestamps. On shared or unmanaged devices, users should select **Clear cache** before leaving. Disconnecting the Microsoft account ends the authenticated session but does not silently delete previously cached inventory.
 
 Cache operations fail closed: if IndexedDB is unavailable or quota is exceeded, the application continues without persistent caching.
 
@@ -34,6 +35,8 @@ Cache operations fail closed: if IndexedDB is unavailable or quota is exceeded, 
 - PDF generation uses already loaded and normalised data.
 - Aggregate counts and detailed rows are kept distinct so a partial detail load is not presented as a complete download.
 - Tenant data in application memory is reset on disconnect or configuration change.
+- Imported Tenant Governance JSON is parsed locally in the browser and is never uploaded by the application.
+- Microsoft Graph requests only the basic user fields needed for identity labels; unresolved non-user objects remain as GUIDs.
 
 ## Endpoint controls
 
@@ -43,6 +46,8 @@ The application contains a fixed allowlist of hosts:
 login.microsoftonline.com
 api.powerplatform.com
 api.bap.microsoft.com
+service.powerapps.com
+graph.microsoft.com
 ```
 
 Users cannot supply arbitrary token endpoints, API URLs, redirect URLs, or script URLs.
@@ -57,7 +62,7 @@ Users cannot supply arbitrary token endpoints, API URLs, redirect URLs, or scrip
 
 ## Preview and legacy surfaces
 
-Tenant Governance is a Microsoft preview endpoint. DLP retrieval uses an administrative BAP endpoint and is labelled accordingly. Both can change, reject browser CORS, or require additional privileges. The application reports such failures transparently and must not weaken CSP or embed credentials as a workaround.
+Tenant Governance is a Microsoft preview endpoint. DLP retrieval uses an administrative BAP endpoint and is labelled accordingly. Live calls use the delegated Power Apps Service `User` permission and remain read-only. Both can change, reject browser CORS, or require additional privileges. The application reports such failures transparently and must not weaken CSP or embed credentials as a workaround.
 
 ## Reporting a vulnerability
 

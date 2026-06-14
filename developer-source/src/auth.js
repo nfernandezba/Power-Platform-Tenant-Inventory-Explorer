@@ -4,7 +4,7 @@ import {
   LogLevel,
   PublicClientApplication
 } from "@azure/msal-browser";
-import { BAP_SCOPE, INVENTORY_SCOPE, STORAGE_KEYS } from "./constants.js";
+import { GRAPH_USER_BASIC_SCOPE, INVENTORY_SCOPE, POWER_APPS_SERVICE_SCOPE, STORAGE_KEYS } from "./constants.js";
 import { getRedirectUri } from "./helpers.js";
 
 let msalInstance = null;
@@ -126,6 +126,7 @@ export async function acquireToken(scopes, { interaction = "popup" } = {}) {
     const interactionRequired = error instanceof InteractionRequiredAuthError
       || /interaction_required|consent_required|login_required/i.test(String(error?.errorCode ?? error?.message ?? ""));
     if (!interactionRequired) throw error;
+    if (interaction === "silent") throw error;
 
     if (interaction === "redirect") {
       await msalInstance.acquireTokenRedirect(request);
@@ -145,7 +146,11 @@ export function acquirePowerPlatformToken(scopes) {
 }
 
 export function acquireBapToken() {
-  return acquireToken(BAP_SCOPE, { interaction: "popup" });
+  return acquireToken(POWER_APPS_SERVICE_SCOPE, { interaction: "popup" });
+}
+
+export function acquireGraphUserToken({ interactive = true } = {}) {
+  return acquireToken(GRAPH_USER_BASIC_SCOPE, { interaction: interactive ? "popup" : "silent" });
 }
 
 export async function signOut() {

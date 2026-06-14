@@ -11,6 +11,12 @@ const OWNER = {
   clara: "10000000-0000-4000-8000-000000000003"
 };
 
+export const demoIdentityDirectory = {
+  [OWNER.ana]: { id: OWNER.ana, displayName: "Ana Torres", userPrincipalName: "ana.torres@contoso.com", mail: "ana.torres@contoso.com" },
+  [OWNER.bruno]: { id: OWNER.bruno, displayName: "Bruno Silva", userPrincipalName: "bruno.silva@contoso.com", mail: "bruno.silva@contoso.com" },
+  [OWNER.clara]: { id: OWNER.clara, displayName: "Clara Martin", userPrincipalName: "clara.martin@contoso.com", mail: "clara.martin@contoso.com" }
+};
+
 function env(id, displayName, location, environmentType, isManaged) {
   return {
     tenantId: TENANT_ID,

@@ -2,6 +2,18 @@
 
 All public releases remain identified as **v1.0** unless the repository owner explicitly requests a version change.
 
+## v1.0 — Tenant Governance and directory identity resolution
+
+- Added live, read-only Tenant Governance loading through the delegated Power Apps Service `User` permission and runtime scope `https://service.powerapps.com//User`.
+- Added a local JSON import fallback for tenant settings when the preview endpoint is blocked by CORS, Conditional Access, or tenant-specific service behaviour.
+- Added Balanced governance, Restrictive enterprise, and Innovation-first local assessment baselines without introducing any tenant write operation.
+- Added governance KPIs, categories, raw settings, source labels, local JSON export, caching, and PDF baseline/source metadata.
+- Added Microsoft Graph delegated `User.ReadBasic.All` identity resolution for owner, creator, and last-modified-by user object IDs.
+- Added JSON batching in groups of 20, local identity caching, explicit Resolve/Refresh actions, and GUID fallback for unresolved non-user objects.
+- Updated resource tables, filters, CSV, details, and PDF appendices to prefer resolved full names and user principal names while retaining object IDs as technical references.
+- Added tests for identity normalisation, Microsoft Graph batching, governance baseline assessment, and imported/live governance state.
+- Kept the public and package versions fixed at v1.0 / 1.0.0.
+
 ## v1.0 — Real-tenant field mapping, PDF readiness, and connector detail update
 
 - Replaced the Copilot Studio book-cover assets with the original Spanish and English A4 artwork supplied by the repository owner.

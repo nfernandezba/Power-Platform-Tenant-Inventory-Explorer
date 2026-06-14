@@ -1,4 +1,4 @@
-import { RESOURCE_TYPES } from "./constants.js";
+import { GOVERNANCE_BASELINES, RESOURCE_TYPES } from "./constants.js";
 import { asArray, normaliseText, parseProperties, safeDate, uniqueSorted } from "./helpers.js";
 
 export function getResourceTypeKey(type) {
@@ -37,7 +37,14 @@ export function canonicalEnvironmentId(value) {
   return segments.length ? segments.at(-1) : text;
 }
 
-export function normaliseInventory(rawItems, environmentItems = []) {
+function identityFromDirectory(directory, id) {
+  const key = String(id ?? "").trim().toLowerCase();
+  if (!key) return null;
+  if (directory instanceof Map) return directory.get(key) ?? null;
+  return directory?.[key] ?? null;
+}
+
+export function normaliseInventory(rawItems, environmentItems = [], identityDirectory = {}) {
   const items = rawItems.map((item, index) => {
     const properties = parseProperties(item?.properties);
     const rawConnectors = projectedField(item, properties, "powerPlatformConnectors");
@@ -54,6 +61,12 @@ export function normaliseInventory(rawItems, environmentItems = []) {
     const displayName = projectedField(item, properties, "displayName", "environmentName") ?? id;
     const isManaged = projectedField(item, properties, "isManagedEnvironment", "isManaged");
     const isQuarantined = projectedField(item, properties, "isQuarantined");
+    const createdBy = String(projectedField(item, properties, "createdBy") ?? "");
+    const ownerId = String(projectedField(item, properties, "ownerId") ?? "");
+    const lastModifiedBy = String(projectedField(item, properties, "lastModifiedBy") ?? "");
+    const ownerIdentity = identityFromDirectory(identityDirectory, ownerId);
+    const createdByIdentity = identityFromDirectory(identityDirectory, createdBy);
+    const lastModifiedByIdentity = identityFromDirectory(identityDirectory, lastModifiedBy);
 
     return {
       rowId: `${type || "unknown"}:${id || "row"}:${index}`,
@@ -74,10 +87,16 @@ export function normaliseInventory(rawItems, environmentItems = []) {
       environmentGroup: String(projectedField(item, properties, "environmentGroup") ?? ""),
       environmentGroupId: String(projectedField(item, properties, "environmentGroupId") ?? ""),
       createdAt: projectedField(item, properties, "createdAt") ?? null,
-      createdBy: String(projectedField(item, properties, "createdBy") ?? ""),
-      ownerId: String(projectedField(item, properties, "ownerId") ?? ""),
+      createdBy,
+      createdByDisplayName: String(createdByIdentity?.displayName ?? ""),
+      createdByPrincipalName: String(createdByIdentity?.userPrincipalName ?? createdByIdentity?.mail ?? ""),
+      ownerId,
+      ownerDisplayName: String(ownerIdentity?.displayName ?? ""),
+      ownerPrincipalName: String(ownerIdentity?.userPrincipalName ?? ownerIdentity?.mail ?? ""),
       lastModifiedAt: projectedField(item, properties, "lastModifiedAt") ?? null,
-      lastModifiedBy: String(projectedField(item, properties, "lastModifiedBy") ?? ""),
+      lastModifiedBy,
+      lastModifiedByDisplayName: String(lastModifiedByIdentity?.displayName ?? ""),
+      lastModifiedByPrincipalName: String(lastModifiedByIdentity?.userPrincipalName ?? lastModifiedByIdentity?.mail ?? ""),
       isQuarantined: isQuarantined === true || isQuarantined === "true",
       subtype: String(projectedField(item, properties, "subType", "subtype") ?? ""),
       trigger: String(projectedField(item, properties, "trigger") ?? ""),
@@ -159,7 +178,7 @@ export function filterInventory(items, filters) {
     if (filters.type && item.typeKey !== filters.type) return false;
     if (filters.environment && (item.environmentName || item.environmentId) !== filters.environment) return false;
     if (filters.region && item.location !== filters.region) return false;
-    if (owner && !normaliseText(item.ownerId).includes(owner)) return false;
+    if (owner && !normaliseText([item.ownerDisplayName, item.ownerPrincipalName, item.ownerId].join(" ")).includes(owner)) return false;
 
     const created = safeDate(item.createdAt);
     if (from && (!created || created < from)) return false;
@@ -173,7 +192,11 @@ export function filterInventory(items, filters) {
       item.environmentName,
       item.environmentId,
       item.location,
+      item.ownerDisplayName,
+      item.ownerPrincipalName,
       item.ownerId,
+      item.createdByDisplayName,
+      item.createdByPrincipalName,
       item.createdBy,
       item.connectorIds.join(" "),
       item.trigger,
@@ -305,38 +328,68 @@ export function normaliseDlpPolicies(rawPolicies) {
   }).sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }));
 }
 
-export function getTenantGovernanceHighlights(settings) {
+export const GOVERNANCE_SETTING_DEFINITIONS = Object.freeze([
+  { path: "disableEnvironmentCreationByNonAdminUsers", labelKey: "restrictEnvironmentCreation", category: "environmentProvisioning", severity: "critical" },
+  { path: "disableTrialEnvironmentCreationByNonAdminUsers", labelKey: "restrictTrialCreation", category: "environmentProvisioning", severity: "critical" },
+  { path: "powerPlatform.governance.disableDeveloperEnvironmentCreationByNonAdminUsers", labelKey: "restrictDeveloperCreation", category: "environmentProvisioning", severity: "warning" },
+  { path: "disablePortalsCreationByNonAdminUsers", labelKey: "restrictPowerPagesCreation", category: "environmentProvisioning", severity: "warning" },
+  { path: "powerPlatform.governance.enableDefaultEnvironmentRouting", labelKey: "defaultEnvironmentRouting", category: "environmentProvisioning", severity: "info", reviewOnly: true },
+  { path: "powerPlatform.powerApps.disableShareWithEveryone", labelKey: "disableShareWithEveryone", category: "sharingCollaboration", severity: "warning" },
+  { path: "powerPlatform.powerApps.DisableConnectionSharingWithEveryone", labelKey: "disableConnectionSharing", category: "sharingCollaboration", severity: "warning" },
+  { path: "powerPlatform.powerApps.enableGuestsToMake", labelKey: "guestMakers", category: "sharingCollaboration", severity: "warning" },
+  { path: "powerPlatform.governance.policy.enableDesktopFlowDataPolicyManagement", labelKey: "desktopFlowDlp", category: "dlpSecurity", severity: "warning" },
+  { path: "powerPlatform.licensing.enableTenantCapacityReportForEnvironmentAdmins", labelKey: "capacityReportEnvironmentAdmins", category: "licensingCapacity", severity: "info", informational: true },
+  { path: "powerPlatform.licensing.EnableTenantLicensingReportForEnvironmentAdmins", labelKey: "licensingReportEnvironmentAdmins", category: "licensingCapacity", severity: "info", informational: true },
+  { path: "powerPlatform.intelligence.disableCopilot", labelKey: "tenantCopilotDisabled", category: "copilotAi", severity: "info", reviewOnly: true },
+  { path: "powerPlatform.intelligence.disableCopilotFeedback", labelKey: "copilotFeedbackDisabled", category: "copilotAi", severity: "info", reviewOnly: true },
+  { path: "powerPlatform.intelligence.disableCopilotFeedbackMetadata", labelKey: "copilotFeedbackMetadataDisabled", category: "copilotAi", severity: "info", reviewOnly: true },
+  { path: "powerPlatform.powerAutomate.disableCopilot", labelKey: "powerAutomateCopilotDisabled", category: "copilotAi", severity: "info", reviewOnly: true },
+  { path: "powerPlatform.powerAutomate.disableCopilotWithBing", labelKey: "powerAutomateCopilotBingDisabled", category: "copilotAi", severity: "info", reviewOnly: true },
+  { path: "powerPlatform.modelExperimentation.enableModelDataSharing", labelKey: "modelDataSharingEnabled", category: "copilotAi", severity: "info", reviewOnly: true },
+  { path: "powerPlatform.modelExperimentation.disableDataLogging", labelKey: "modelDataLoggingDisabled", category: "copilotAi", severity: "info", reviewOnly: true }
+]);
+
+export function getTenantGovernanceHighlights(settings, baselineKey = "balanced") {
   const flattened = flattenObject(settings);
   const byPath = new Map(flattened.map(item => [normaliseText(item.path), item]));
-  const definitions = [
-    ["disableEnvironmentCreationByNonAdminUsers", "restrictEnvironmentCreation", true, "critical"],
-    ["disableTrialEnvironmentCreationByNonAdminUsers", "restrictTrialCreation", true, "critical"],
-    ["powerPlatform.governance.disableDeveloperEnvironmentCreationByNonAdminusers", "restrictDeveloperCreation", true, "warning"],
-    ["disablePortalsCreationByNonAdminUsers", "restrictPowerPagesCreation", true, "warning"],
-    ["powerPlatform.powerApps.disableShareWithEveryone", "disableShareWithEveryone", true, "warning"],
-    ["powerPlatform.powerApps.DisableConnectionSharingWithEveryone", "disableConnectionSharing", true, "warning"],
-    ["powerPlatform.governance.enableDefaultEnvironmentRouting", "defaultEnvironmentRouting", true, "info"],
-    ["powerPlatform.governance.policy.enableDesktopFlowDataPolicyManagement", "desktopFlowDlp", true, "info"],
-    ["powerPlatform.powerApps.enableGuestsToMake", "guestMakers", false, "warning"],
-    ["powerPlatform.licensing.enableTenantCapacityReportForEnvironmentAdmins", "capacityReportEnvironmentAdmins", true, "info"]
-  ];
+  const baseline = GOVERNANCE_BASELINES[baselineKey] ?? GOVERNANCE_BASELINES.balanced;
 
-  return definitions.map(([path, labelKey, desired, severity]) => {
-    const exact = byPath.get(normaliseText(path));
-    const fallback = flattened.find(item => normaliseText(item.path).endsWith(normaliseText(path)));
+  return GOVERNANCE_SETTING_DEFINITIONS.map(definition => {
+    const exact = byPath.get(normaliseText(definition.path));
+    const fallback = flattened.find(item => normaliseText(item.path).endsWith(normaliseText(definition.path)));
     const entry = exact ?? fallback;
-    const value = entry?.value;
     const available = entry !== undefined;
+    const value = entry?.value;
+    const desired = baseline.expectations[definition.path];
+    let assessment = "unavailable";
+    if (available && definition.informational) assessment = "informational";
+    else if (available && (definition.reviewOnly || desired === undefined)) assessment = "review";
+    else if (available) {
+      const comparableValue = typeof desired === "boolean" && typeof value === "string"
+        ? value.trim().toLowerCase() === "true"
+        : value;
+      assessment = comparableValue === desired ? "aligned" : "notAligned";
+    }
+
     return {
-      path: entry?.path ?? path,
-      labelKey,
+      ...definition,
+      path: entry?.path ?? definition.path,
       value,
       desired,
       available,
-      healthy: available ? value === desired : null,
-      severity
+      assessment,
+      healthy: assessment === "aligned" ? true : assessment === "notAligned" ? false : null
     };
   });
+}
+
+export function summariseGovernanceAssessment(settings, baselineKey = "balanced") {
+  const items = getTenantGovernanceHighlights(settings, baselineKey);
+  const counts = { total: items.length, aligned: 0, notAligned: 0, review: 0, informational: 0, unavailable: 0 };
+  for (const item of items) counts[item.assessment] = (counts[item.assessment] ?? 0) + 1;
+  const categories = {};
+  for (const item of items) (categories[item.category] ??= []).push(item);
+  return { baselineKey, items, counts, categories };
 }
 
 export function normaliseEnvironmentDetails(raw, environmentId = "") {

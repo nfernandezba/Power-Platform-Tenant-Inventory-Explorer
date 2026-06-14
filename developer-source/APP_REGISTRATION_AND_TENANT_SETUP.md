@@ -31,8 +31,9 @@ The application can access several independent data sources:
 | Overview, Resources, inventory counts | Power Platform Inventory API | `ResourceQuery.Resources.Read` delegated permission | Yes |
 | Environment list and environment details | Power Platform API | `EnvironmentManagement.Environments.Read` delegated permission | Recommended |
 | Environment Settings | Power Platform API | `EnvironmentManagement.Settings.Read` delegated permission | Optional |
-| Tenant Governance | Legacy Business Application Platform administrative endpoint | Signed-in administrative user, runtime consent and tenant policy permitting access | Optional / best effort |
-| DLP Policies | Legacy Business Application Platform administrative endpoint | Signed-in administrative user, runtime consent and tenant policy permitting access | Optional / best effort |
+| Owner, creator, and modifier display names | Microsoft Graph | `User.ReadBasic.All` delegated permission | Optional but recommended |
+| Tenant Governance | Legacy Power Apps Service / Business Application Platform administrative endpoint | Power Apps Service delegated `User` permission, administrative user, and tenant policy permitting access | Optional / best effort |
+| DLP Policies | Legacy Power Apps Service / Business Application Platform administrative endpoint | Power Apps Service delegated `User` permission, administrative user, and tenant policy permitting access | Optional / best effort |
 
 The core Inventory API is independent from the optional Tenant Governance and DLP requests. A failure in an optional administrative source does not prevent the core inventory from loading.
 
@@ -51,6 +52,8 @@ Before creating the App Registration, confirm the following:
    - `login.microsoftonline.com`
    - `api.powerplatform.com`
    - `api.bap.microsoft.com` for optional administrative queries
+   - `service.powerapps.com` for the delegated Power Apps Service token
+   - `graph.microsoft.com` for optional identity-name resolution
    - the GitHub Pages site origin
 
 ### Recommended least-privilege model
@@ -161,18 +164,28 @@ For this solution:
 
 The application uses the authorisation code flow with PKCE through MSAL Browser. The SPA platform configuration provides the required token-endpoint CORS support.
 
-## 6. Remove unnecessary default permissions
+## 6. Configure Microsoft Graph owner-name resolution
 
-A newly registered application might display Microsoft Graph `User.Read` depending on the portal experience and registration workflow. Power Platform Tenant Inventory Explorer does not call Microsoft Graph.
+Power Platform Inventory returns owner, creator, and last-modified-by values as Microsoft Entra object identifiers. To replace resolvable user GUIDs with full names and user principal names, add the delegated Microsoft Graph permission:
 
-You may remove `User.Read` if it is present and your organisation does not require it for another reason:
+```text
+User.ReadBasic.All
+```
+
+Procedure:
 
 1. Open **API permissions**.
-2. Select the Microsoft Graph `User.Read` permission.
-3. Select **Remove permission**.
-4. Confirm the removal.
+2. Select **Add a permission**.
+3. Select **Microsoft Graph**.
+4. Select **Delegated permissions**.
+5. Search for and select `User.ReadBasic.All`.
+6. Select **Add permissions**.
 
-The application requests the OpenID Connect identity scopes `openid` and `profile` dynamically for sign-in. These do not require adding Microsoft Graph data permissions for this application.
+The application requests this token only when it attempts identity resolution or when the user selects **Resolve owner names**. It uses Microsoft Graph JSON batching and requests only the basic profile fields required by the interface: object ID, display name, user principal name, and mail address.
+
+A newly registered application may also contain Microsoft Graph `User.Read`. The application does not need `User.Read` for its inventory logic. You may remove `User.Read` after adding `User.ReadBasic.All`, unless the registration is shared with another application that requires it. The OpenID Connect scopes `openid` and `profile` continue to be requested dynamically for sign-in.
+
+Identity resolution is best effort. Service principals, teams, deleted users, and directory objects that cannot be read as users remain displayed as GUIDs.
 
 ## 7. Add the required Inventory permission
 
@@ -259,6 +272,8 @@ The recommended permission set is:
 | Power Platform API | `ResourceQuery.Resources.Read` | Delegated | Required inventory queries |
 | Power Platform API | `EnvironmentManagement.Environments.Read` | Delegated | Environment details and selection |
 | Power Platform API | `EnvironmentManagement.Settings.Read` | Delegated | Read-only Environment Settings |
+| Microsoft Graph | `User.ReadBasic.All` | Delegated | Resolve user object IDs to basic profile names |
+| Power Apps Service | `User` | Delegated | Live Tenant Governance and DLP administrative queries |
 
 Do not add write permissions. Do not add application permissions. Do not create a client secret.
 
@@ -331,27 +346,46 @@ A policy that permits the initial application sign-in but blocks the downstream 
 
 Also confirm that corporate proxies, secure web gateways, browser extensions, and content filters allow cross-origin HTTPS requests from the GitHub Pages origin to Microsoft API endpoints.
 
-## 13. Optional Tenant Governance and DLP access
+## 13. Configure optional Tenant Governance and DLP access
 
-The **Tenant Governance** and **DLP Policies** tabs use legacy Business Application Platform administrative endpoints under:
+The **Tenant Governance** and **DLP Policies** tabs use legacy Power Apps Service / Business Application Platform administrative endpoints under:
 
 ```text
 https://api.bap.microsoft.com
 ```
 
-They are deliberately loaded only when the user selects their load action.
+To enable the live queries, add the first-party **Power Apps Service** API to the App Registration.
+
+1. Open **API permissions** and select **Add a permission**.
+2. Select **APIs my organisation uses**.
+3. Search for **Power Apps Service**.
+4. Verify that its Application ID is:
+
+```text
+475226c6-020e-4fb2-8a90-7a972cbfc1d4
+```
+
+5. Select **Delegated permissions**.
+6. Select the delegated permission named **User — Access the Power Apps Service API**.
+7. Select **Add permissions**.
+8. Grant administrative consent according to the tenant's policy.
+
+At runtime, the application requests this scope only when Governance or DLP is loaded:
+
+```text
+https://service.powerapps.com//User
+```
+
+Tenant Governance calls the preview `listtenantsettings` operation without a request body. The tab provides three local assessment baselines — Balanced governance, Restrictive enterprise, and Innovation-first — and remains strictly read-only. The baseline affects only the local interpretation; it does not change the tenant.
+
+Because the endpoint is preview and direct browser access can be affected by CORS, Conditional Access, or tenant-specific service behaviour, Tenant Governance also supports **Import JSON**. The imported file is parsed locally in the browser and is not uploaded to the repository owner or another service.
 
 Important considerations:
 
-1. The application requests a delegated token for the BAP resource at runtime.
-2. Microsoft documents the tenant-settings endpoint as preview.
-3. DLP and tenant settings are separate from the core Inventory API.
-4. Access is evaluated using the signed-in user's administrative scope and the tenant's consent and Conditional Access policies.
-5. A Power Platform service administrator has broader tenant access than an environment administrator; environment administrators can only see data within their administrative scope.
-6. These legacy endpoints can be more sensitive to consent, service-principal provisioning, CORS, and tenant policy differences.
-7. A failure in DLP or Tenant Governance does not mean the Inventory App Registration is incorrectly configured if Overview and Resources work.
-
-No additional write permission is required or requested by the application. The tool is read-only.
+1. DLP and tenant settings are separate from the core Inventory API.
+2. Access is evaluated using the signed-in user's administrative scope, consent, and Conditional Access policies.
+3. A failure in DLP or Tenant Governance does not mean the Inventory App Registration is incorrectly configured if Overview and Resources work.
+4. The application requests no write permission and does not change tenant settings or DLP policies.
 
 ## 14. Run the application against the tenant
 
@@ -405,6 +439,8 @@ Expected result:
 - Each resource-type tab shows the aggregated expected count.
 - **Load first 1,000** retrieves the first page for that resource type.
 - **Load next 1,000** and **Load all remaining** are available when more pages exist.
+- **Resolve owner names** replaces resolvable user object IDs with display names and user principal names after Microsoft Graph consent.
+- Service principals, teams, deleted users, and other non-user objects can legitimately remain as GUIDs.
 
 The API uses Azure Resource Graph pagination and can return a `skipToken` for subsequent pages.
 
@@ -415,8 +451,10 @@ Expected result:
 - The tab remains unloaded until the user explicitly starts it.
 - An additional Microsoft consent or authentication popup might appear.
 - Returned settings are displayed with their raw property path and an advisory assessment.
+- The user can select a local assessment baseline without modifying the tenant.
+- **Import JSON** provides a local fallback when the live preview endpoint is blocked.
 
-The endpoint is preview and may behave differently across tenants.
+The endpoint is preview and may behave differently across tenants. The application remains read-only.
 
 ### DLP Policies
 
@@ -451,12 +489,14 @@ Perform this validation after the first deployment:
 7. Load the first 1,000 Copilot Studio agents.
 8. Open Environments and select a known environment.
 9. Load Environment Settings.
-10. Load Tenant Governance.
-11. Load DLP Policies.
-12. Export CSV, JSON and PDF.
-13. Confirm that the PDF displays the book-cover images.
-14. Sign out.
-15. On a shared device, select **Clear cache** to remove locally cached tenant inventory.
+10. Select **Resolve owner names** and confirm that resolvable user GUIDs become display names.
+11. Load Tenant Governance and test a second baseline.
+12. Import a tenant-settings JSON file and confirm that the source changes to Imported JSON.
+13. Load DLP Policies.
+14. Export CSV, JSON and PDF.
+15. Confirm that the PDF displays resolved owner names, governance source/baseline, and the book-cover images.
+16. Sign out.
+17. On a shared device, select **Clear cache** to remove locally cached tenant inventory.
 
 Record which optional endpoints work in the target tenant. A successful core inventory test should not be marked as failed solely because a preview or legacy endpoint is unavailable.
 
@@ -475,6 +515,8 @@ Before releasing the URL to administrators, verify:
 - [ ] Only delegated read permissions are configured.
 - [ ] `ResourceQuery.Resources.Read` is present.
 - [ ] Environment read permissions are present when Environment Settings is required.
+- [ ] Microsoft Graph `User.ReadBasic.All` is present when owner-name resolution is required.
+- [ ] Power Apps Service delegated `User` is present when live Tenant Governance or DLP is required.
 - [ ] Admin consent status is confirmed.
 - [ ] Users have Power Platform Administrator or Dynamics 365 Administrator.
 - [ ] Enterprise Application user assignment is configured intentionally.
@@ -689,8 +731,9 @@ La aplicación utiliza varias fuentes de datos independientes:
 | Overview, Resources y recuentos | Power Platform Inventory API | Permiso delegado `ResourceQuery.Resources.Read` | Sí |
 | Lista y detalle de entornos | Power Platform API | Permiso delegado `EnvironmentManagement.Environments.Read` | Recomendado |
 | Environment Settings | Power Platform API | Permiso delegado `EnvironmentManagement.Settings.Read` | Opcional |
-| Tenant Governance | Endpoint administrativo heredado de Business Application Platform | Usuario administrador autenticado, consentimiento en ejecución y políticas del tenant que permitan el acceso | Opcional / best effort |
-| DLP Policies | Endpoint administrativo heredado de Business Application Platform | Usuario administrador autenticado, consentimiento en ejecución y políticas del tenant que permitan el acceso | Opcional / best effort |
+| Nombres de owner, creator y modifier | Microsoft Graph | Permiso delegado `User.ReadBasic.All` | Opcional pero recomendado |
+| Tenant Governance | Endpoint administrativo heredado de Power Apps Service / Business Application Platform | Permiso delegado `User` de Power Apps Service, usuario administrador y políticas del tenant que permitan el acceso | Opcional / best effort |
+| DLP Policies | Endpoint administrativo heredado de Power Apps Service / Business Application Platform | Permiso delegado `User` de Power Apps Service, usuario administrador y políticas del tenant que permitan el acceso | Opcional / best effort |
 
 El inventario principal es independiente de las consultas opcionales de Tenant Governance y DLP. Si una fuente administrativa opcional falla, el inventario principal puede continuar funcionando.
 
@@ -709,6 +752,8 @@ Antes de registrar la aplicación, confirma lo siguiente:
    - `login.microsoftonline.com`
    - `api.powerplatform.com`
    - `api.bap.microsoft.com` para consultas administrativas opcionales
+   - `service.powerapps.com` para el token delegado de Power Apps Service
+   - `graph.microsoft.com` para la resolución opcional de nombres
    - el origen del sitio de GitHub Pages
 
 ### Modelo de mínimo privilegio recomendado
@@ -821,18 +866,28 @@ Para esta solución:
 
 La aplicación utiliza Authorization Code Flow con PKCE mediante MSAL Browser. La plataforma SPA habilita el comportamiento CORS necesario para el endpoint de tokens.
 
-## 6. Eliminar permisos predeterminados innecesarios
+## 6. Configurar la resolución de nombres mediante Microsoft Graph
 
-Dependiendo de la experiencia del portal, una nueva App Registration puede incluir Microsoft Graph `User.Read`. Power Platform Tenant Inventory Explorer no consulta Microsoft Graph.
+Power Platform Inventory devuelve owner, creator y last-modified-by como identificadores de objeto de Microsoft Entra. Para sustituir los GUID resolubles por el nombre completo y el user principal name, añade este permiso delegado de Microsoft Graph:
 
-Puedes eliminarlo si aparece y tu organización no lo necesita por otro motivo:
+```text
+User.ReadBasic.All
+```
+
+Procedimiento:
 
 1. Abre **API permissions**.
-2. Selecciona el permiso Microsoft Graph `User.Read`.
-3. Pulsa **Remove permission**.
-4. Confirma la eliminación.
+2. Pulsa **Add a permission**.
+3. Selecciona **Microsoft Graph**.
+4. Selecciona **Delegated permissions**.
+5. Busca y marca `User.ReadBasic.All`.
+6. Pulsa **Add permissions**.
 
-La aplicación solicita dinámicamente los scopes de identidad OpenID Connect `openid` y `profile`. No necesita permisos de datos de Microsoft Graph para iniciar sesión.
+La aplicación solicita este token únicamente cuando intenta resolver identidades o cuando el usuario pulsa **Resolver nombres de propietarios**. Utiliza JSON batching de Microsoft Graph y pide solamente los campos de perfil básico necesarios: object ID, display name, user principal name y dirección de correo.
+
+Una App Registration nueva también puede incluir Microsoft Graph `User.Read`. La lógica del inventario no necesita `User.Read`. Puedes eliminarlo después de añadir `User.ReadBasic.All`, salvo que la App Registration sea compartida con otra solución que lo requiera. Los scopes OpenID Connect `openid` y `profile` continúan solicitándose dinámicamente para iniciar sesión.
+
+La resolución es best effort. Los service principals, teams, usuarios eliminados y objetos que Graph no pueda leer como usuarios seguirán mostrando el GUID.
 
 ## 7. Añadir el permiso obligatorio de inventario
 
@@ -919,6 +974,8 @@ El conjunto recomendado es:
 | Power Platform API | `ResourceQuery.Resources.Read` | Delegated | Consultas obligatorias de inventario |
 | Power Platform API | `EnvironmentManagement.Environments.Read` | Delegated | Lista y detalle de entornos |
 | Power Platform API | `EnvironmentManagement.Settings.Read` | Delegated | Lectura de Environment Settings |
+| Microsoft Graph | `User.ReadBasic.All` | Delegated | Resolver object IDs de usuarios a nombres de perfil básico |
+| Power Apps Service | `User` | Delegated | Consultas administrativas en vivo de Tenant Governance y DLP |
 
 No añadas permisos de escritura. No añadas permisos de aplicación. No crees un Client Secret.
 
@@ -991,27 +1048,46 @@ Una política puede permitir el inicio de sesión inicial y bloquear posteriorme
 
 Comprueba también que proxies corporativos, secure web gateways, extensiones del navegador y filtros de contenido permitan solicitudes HTTPS cross-origin desde GitHub Pages hacia los endpoints de Microsoft.
 
-## 13. Acceso opcional a Tenant Governance y DLP
+## 13. Configurar el acceso opcional a Tenant Governance y DLP
 
-Los tabs **Tenant Governance** y **DLP Policies** utilizan endpoints administrativos heredados de Business Application Platform bajo:
+Los tabs **Tenant Governance** y **DLP Policies** utilizan endpoints administrativos heredados de Power Apps Service / Business Application Platform bajo:
 
 ```text
 https://api.bap.microsoft.com
 ```
 
-Se cargan únicamente cuando el usuario pulsa la acción correspondiente.
+Para habilitar las consultas en vivo, añade la API first-party **Power Apps Service** a la App Registration.
+
+1. Abre **API permissions** y pulsa **Add a permission**.
+2. Selecciona **APIs my organisation uses**.
+3. Busca **Power Apps Service**.
+4. Verifica que su Application ID sea:
+
+```text
+475226c6-020e-4fb2-8a90-7a972cbfc1d4
+```
+
+5. Selecciona **Delegated permissions**.
+6. Marca el permiso **User — Access the Power Apps Service API**.
+7. Pulsa **Add permissions**.
+8. Concede consentimiento administrativo de acuerdo con la política del tenant.
+
+En ejecución, la aplicación solicita este scope solamente al cargar Governance o DLP:
+
+```text
+https://service.powerapps.com//User
+```
+
+Tenant Governance invoca la operación preview `listtenantsettings` sin request body. El tab ofrece tres baselines locales —Gobierno equilibrado, Empresa restrictiva e Innovation-first— y permanece estrictamente read-only. El baseline solo modifica la interpretación local y no cambia el tenant.
+
+Como el endpoint está en preview y el acceso directo desde el navegador puede verse afectado por CORS, Conditional Access o diferencias del servicio, Tenant Governance también permite **Importar JSON**. El archivo se procesa localmente en el navegador y no se envía al propietario del repositorio ni a otro servicio.
 
 Consideraciones importantes:
 
-1. La aplicación solicita en ejecución un token delegado para el recurso BAP.
-2. Microsoft documenta el endpoint de tenant settings como preview.
-3. DLP y tenant settings son fuentes separadas del Inventory API principal.
-4. El acceso depende del alcance administrativo del usuario, del consentimiento y de las políticas de Conditional Access del tenant.
-5. Un Power Platform service administrator dispone de mayor alcance que un environment administrator; este último solo puede acceder a los datos incluidos en su ámbito administrativo.
-6. Estos endpoints heredados pueden verse más afectados por diferencias de consentimiento, Service Principal, CORS y políticas específicas del tenant.
-7. Si DLP o Tenant Governance fallan, la App Registration del inventario puede seguir estando correctamente configurada cuando Overview y Resources funcionan.
-
-La aplicación no solicita permisos de escritura y no modifica ninguna política ni configuración.
+1. DLP y tenant settings son fuentes separadas del Inventory API principal.
+2. El acceso depende del alcance administrativo del usuario, el consentimiento y Conditional Access.
+3. Si DLP o Tenant Governance fallan, Overview y Resources pueden continuar funcionando correctamente.
+4. La aplicación no solicita permisos de escritura ni modifica tenant settings o políticas DLP.
 
 ## 14. Ejecutar la aplicación contra el tenant
 
@@ -1065,6 +1141,8 @@ Resultado esperado:
 - Cada tab secundario muestra el recuento agregado esperado.
 - **Load first 1,000** recupera la primera página.
 - **Load next 1,000** y **Load all remaining** aparecen cuando existen más páginas.
+- **Resolver nombres de propietarios** sustituye los object IDs resolubles por display name y user principal name después del consentimiento de Microsoft Graph.
+- Los service principals, teams, usuarios eliminados y otros objetos no-user pueden continuar apareciendo como GUIDs.
 
 La API utiliza paginación de Azure Resource Graph y devuelve `skipToken` cuando hay resultados adicionales.
 
@@ -1075,8 +1153,10 @@ Resultado esperado:
 - El tab permanece sin cargar hasta que el usuario inicia la consulta.
 - Puede aparecer una ventana adicional de autenticación o consentimiento.
 - Los settings se muestran con su ruta original y una evaluación orientativa.
+- El usuario puede seleccionar un baseline local sin modificar el tenant.
+- **Importar JSON** ofrece un fallback local cuando el endpoint preview en vivo está bloqueado.
 
-El endpoint es preview y su comportamiento puede variar entre tenants.
+El endpoint es preview y su comportamiento puede variar entre tenants. La aplicación permanece read-only.
 
 ### DLP Policies
 
@@ -1111,12 +1191,14 @@ Después del primer despliegue, realiza esta validación:
 7. Carga los primeros 1.000 Copilot Studio agents.
 8. Abre Environments y selecciona un entorno conocido.
 9. Carga Environment Settings.
-10. Carga Tenant Governance.
-11. Carga DLP Policies.
-12. Exporta CSV, JSON y PDF.
-13. Comprueba que el PDF muestra las portadas de los libros.
-14. Cierra sesión.
-15. En un equipo compartido, pulsa **Clear cache** para eliminar el inventario almacenado localmente.
+10. Pulsa **Resolver nombres de propietarios** y confirma que los GUIDs de usuarios resolubles pasan a mostrar nombres.
+11. Carga Tenant Governance y prueba un segundo baseline.
+12. Importa un JSON de tenant settings y confirma que la fuente cambia a JSON importado.
+13. Carga DLP Policies.
+14. Exporta CSV, JSON y PDF.
+15. Comprueba que el PDF muestra nombres resueltos, fuente/baseline de Governance y las portadas de los libros.
+16. Cierra sesión.
+17. En un equipo compartido, pulsa **Clear cache** para eliminar el inventario almacenado localmente.
 
 Documenta qué endpoints opcionales funcionan en tu tenant. Una prueba correcta del inventario principal no debe considerarse fallida únicamente porque un endpoint preview o heredado no esté disponible.
 

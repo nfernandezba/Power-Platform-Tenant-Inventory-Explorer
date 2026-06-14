@@ -4,6 +4,7 @@ import {
   flattenObject,
   getTenantGovernanceHighlights,
   groupEnvironmentSettings,
+  summariseGovernanceAssessment,
   normaliseDlpPolicies,
   normaliseInventory
 } from "../src/data.js";
@@ -33,6 +34,17 @@ describe("administrative datasets", () => {
     const environmentCreation = highlights.find(item => item.labelKey === "restrictEnvironmentCreation");
     expect(environmentCreation.available).toBe(true);
     expect(environmentCreation.healthy).toBe(true);
+  });
+
+
+  it("applies the selected governance baseline without changing tenant data", () => {
+    const balanced = summariseGovernanceAssessment(demoTenantSettings, "balanced");
+    const restrictive = summariseGovernanceAssessment(demoTenantSettings, "restrictive");
+    const balancedDeveloper = balanced.items.find(item => item.labelKey === "restrictDeveloperCreation");
+    const restrictiveDeveloper = restrictive.items.find(item => item.labelKey === "restrictDeveloperCreation");
+    expect(balancedDeveloper.desired).toBe(false);
+    expect(restrictiveDeveloper.desired).toBe(true);
+    expect(demoTenantSettings.powerPlatform.governance.disableDeveloperEnvironmentCreationByNonAdminusers).toBe(false);
   });
 
   it("groups environment settings by product area", () => {

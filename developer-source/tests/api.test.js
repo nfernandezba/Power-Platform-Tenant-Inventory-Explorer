@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createInventoryQuery, executeInventoryQuery, InventoryApiError } from "../src/api.js";
+import { createInventoryQuery, executeInventoryQuery, InventoryApiError, queryDirectoryUsers } from "../src/api.js";
 import { QUERY_RESOURCE_TYPES } from "../src/constants.js";
 
 afterEach(() => {
@@ -51,5 +51,27 @@ describe("inventory error diagnostics", () => {
     expect(caught.endpoint).toContain("resourcequery/resources/query");
     expect(caught.requestBody).toContain('"TableName": "PowerPlatformResources"');
     expect(caught.requestBody).not.toContain("token");
+  });
+});
+
+
+describe("Microsoft Graph identity resolution", () => {
+  it("batches user lookups in groups of twenty and returns unresolved identities", async () => {
+    const calls = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, options) => {
+      const body = JSON.parse(options.body);
+      calls.push(body.requests.length);
+      return new Response(JSON.stringify({
+        responses: body.requests.map((request, index) => index === body.requests.length - 1 && calls.length === 2
+          ? { id: request.id, status: 404, body: { error: { message: "User not found" } } }
+          : { id: request.id, status: 200, body: { id: request.url.split("/")[2].split("?")[0], displayName: `User ${request.id}`, userPrincipalName: `user${request.id}@example.com` } })
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+
+    const ids = Array.from({ length: 21 }, (_, index) => `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`);
+    const result = await queryDirectoryUsers("graph-token", ids);
+    expect(calls).toEqual([20, 1]);
+    expect(result.users).toHaveLength(20);
+    expect(result.unresolved).toHaveLength(1);
   });
 });

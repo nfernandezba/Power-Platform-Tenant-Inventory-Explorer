@@ -60,6 +60,17 @@ describe("normaliseInventory", () => {
     expect(resources[0].connectorDataLoaded).toBe(false);
   });
 
+
+  it("resolves owner and author names from a basic identity directory", () => {
+    const directory = {
+      "owner-1": { id: "owner-1", displayName: "Ana Fernández", userPrincipalName: "ana@example.com" }
+    };
+    const items = normaliseInventory(raw, [], directory);
+    const app = items.find(item => item.id === "app-1");
+    expect(app.ownerDisplayName).toBe("Ana Fernández");
+    expect(app.ownerPrincipalName).toBe("ana@example.com");
+  });
+
   it("marks connector detail as loaded when the projected connector field is returned", () => {
     const [resource] = normaliseInventory([{
       name: "flow-detail",
@@ -77,6 +88,13 @@ describe("filterInventory", () => {
   it("searches across names and connectors", () => {
     const items = normaliseInventory(raw);
     expect(filterInventory(items, { search: "sharepoint", type: "", environment: "", region: "", owner: "", createdFrom: "", createdTo: "" })).toHaveLength(1);
+  });
+
+  it("filters by resolved owner name", () => {
+    const items = normaliseInventory(raw, [], {
+      "owner-1": { id: "owner-1", displayName: "Ana Fernández", userPrincipalName: "ana@example.com" }
+    });
+    expect(filterInventory(items, { search: "", type: "", environment: "", region: "", owner: "ana", createdFrom: "", createdTo: "" })).toHaveLength(1);
   });
 });
 

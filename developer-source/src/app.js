@@ -3,6 +3,7 @@ import {
   APP_VERSION,
   BOOKS,
   CONNECTOR_INVENTORY_TYPES,
+  GOVERNANCE_BASELINES,
   LINKEDIN_URL,
   POWER_PLATFORM_SCOPES,
   RESOURCE_TYPES,
@@ -12,6 +13,7 @@ import {
 import { translations } from "./i18n.js";
 import {
   acquireBapToken,
+  acquireGraphUserToken,
   acquireInventoryToken,
   acquirePowerPlatformToken,
   clearStoredConfig,
@@ -27,6 +29,7 @@ import {
   queryBootstrapEnvironments,
   queryBootstrapRecent,
   queryBootstrapSummary,
+  queryDirectoryUsers,
   queryDlpPolicies,
   queryEnvironmentDetails,
   queryEnvironmentSettings,
@@ -41,24 +44,25 @@ import {
   filterInventory,
   flattenObject,
   getFilterOptions,
-  getTenantGovernanceHighlights,
   groupEnvironmentSettings,
   mergeUniqueResources,
   normaliseDlpPolicies,
   normaliseEnvironmentDetails,
   normaliseInventory,
   normaliseSummaryRows,
-  sortInventory
+  sortInventory,
+  summariseGovernanceAssessment
 } from "./data.js";
 import {
   demoDlpPolicies,
+  demoIdentityDirectory,
   demoEnvironmentDetails,
   demoEnvironmentSettings,
   demoRawItems,
   demoTenantSettings
 } from "./demo-data.js";
 import { clearTenantCache, deleteCachedDataset, getCachedDataset, setCachedDataset } from "./cache.js";
-import { exportCsv, exportJson } from "./export.js";
+import { exportCsv, exportGovernanceJson, exportJson } from "./export.js";
 import { escapeHtml, formatDate, getRedirectUri, isValidGuid, normaliseText, truncateMiddle } from "./helpers.js";
 
 const root = document.getElementById("app");
@@ -89,6 +93,13 @@ function emptyResourceState() {
 function makeResourceStates() {
   return Object.fromEntries(RESOURCE_TAB_KEYS.map(key => [key, emptyResourceState()]));
 }
+function loadGovernanceBaseline() {
+  const saved = localStorage.getItem(STORAGE_KEYS.governanceBaseline);
+  return GOVERNANCE_BASELINES[saved] ? saved : "balanced";
+}
+function emptyIdentityState() {
+  return { ...emptySourceState(), byId: {}, unresolved: [], attemptedIds: [] };
+}
 
 const state = {
   language: "es",
@@ -112,7 +123,8 @@ const state = {
   error: null,
   authInitialising: false,
   cacheRestoring: false,
-  tenantGovernance: { ...emptySourceState(), data: null },
+  tenantGovernance: { ...emptySourceState(), data: null, sourceType: "", baseline: loadGovernanceBaseline() },
+  identities: emptyIdentityState(),
   dlp: { ...emptySourceState(), raw: [], policies: [] },
   environmentSettings: {
     ...emptySourceState(), selectedId: "", details: null, settings: null, groups: {}, detailsError: null, settingsError: null
@@ -124,6 +136,29 @@ function tenantId() { return state.demo ? "11111111-2222-4333-8444-555555555555"
 function environmentItems() { return state.bootstrap.environments.items ?? []; }
 function loadedResources() { return mergeUniqueResources(...RESOURCE_TAB_KEYS.map(key => state.resources[key].items)); }
 function knownResources() { return mergeUniqueResources(loadedResources(), state.bootstrap.recent.items ?? []); }
+function normaliseResources(raw, environments = environmentItems()) {
+  return normaliseInventory(raw ?? [], environments, state.identities.byId);
+}
+function identityIdsFromResources(items = knownResources()) {
+  return [...new Set(items.flatMap(item => [item.ownerId, item.createdBy, item.lastModifiedBy])
+    .map(value => String(value ?? "").trim().toLowerCase())
+    .filter(value => isValidGuid(value)))];
+}
+function identityLabel(item, field = "owner") {
+  if (field === "createdBy") return item.createdByDisplayName || item.createdByPrincipalName || item.createdBy || "";
+  if (field === "lastModifiedBy") return item.lastModifiedByDisplayName || item.lastModifiedByPrincipalName || item.lastModifiedBy || "";
+  return item.ownerDisplayName || item.ownerPrincipalName || item.ownerId || "";
+}
+function refreshIdentityHydration() {
+  state.bootstrap.recent.items = normaliseResources(state.bootstrap.recent.raw ?? []);
+  for (const key of RESOURCE_TAB_KEYS) state.resources[key].items = normaliseResources(state.resources[key].raw ?? []);
+  for (const [cacheKey, detail] of Object.entries(state.detailCache)) {
+    const raw = detail?.raw ? [detail.raw] : [];
+    const refreshed = raw.length ? normaliseResources(raw)[0] : null;
+    if (refreshed) state.detailCache[cacheKey] = { ...detail, ...refreshed, rowId: detail.rowId };
+  }
+}
+
 function summaryData() { return state.bootstrap.summary.data ?? { total: 0, byType: {}, byRegion: {}, byEnvironment: {}, rows: [] }; }
 function expectedCount(key) { return Number(summaryData().byType?.[key] ?? 0); }
 function latestRefresh() {
@@ -348,7 +383,7 @@ function sourceCard(label, source, badge = "") {
   return `<article class="source-card"><div><strong>${escapeHtml(label)}</strong>${badge ? `<span class="preview-badge">${escapeHtml(badge)}</span>` : ""}</div><span class="source-status source-${source.status}">${escapeHtml(queryStatusLabel(source))}</span></article>`;
 }
 function renderDataSources() {
-  return `<section class="panel source-panel"><h2>${escapeHtml(t().dataSources)}</h2><div class="source-grid">${sourceCard("PowerPlatformResources · Summary", state.bootstrap.summary)}${sourceCard("PowerPlatformResources · Environments", state.bootstrap.environments)}${sourceCard("PowerPlatformResources · Resources", { status: loadedResourceCount() ? "partial" : "idle" })}${sourceCard(t().tenantGovernance, state.tenantGovernance, t().preview)}${sourceCard(t().dlpPolicies, state.dlp, t().legacy)}${sourceCard(t().environmentSettings, state.environmentSettings)}</div></section>`;
+  return `<section class="panel source-panel"><h2>${escapeHtml(t().dataSources)}</h2><div class="source-grid">${sourceCard("PowerPlatformResources · Summary", state.bootstrap.summary)}${sourceCard("PowerPlatformResources · Environments", state.bootstrap.environments)}${sourceCard("PowerPlatformResources · Resources", { status: loadedResourceCount() ? "partial" : "idle" })}${sourceCard(t().identityDirectory, state.identities, "Microsoft Graph")}${sourceCard(t().tenantGovernance, state.tenantGovernance, t().preview)}${sourceCard(t().dlpPolicies, state.dlp, t().legacy)}${sourceCard(t().environmentSettings, state.environmentSettings)}</div></section>`;
 }
 function renderRecentResources() {
   const recent = state.bootstrap.recent.items ?? [];
@@ -365,9 +400,17 @@ function renderEnvironmentsTab() {
   return `<section class="section-block"><div class="section-heading-row"><div><p class="eyebrow">ENVIRONMENT LEVEL</p><h1>${escapeHtml(t().environmentInventory)}</h1><p>${escapeHtml(t().environmentInventoryOptimisedBody)}</p></div><button id="refresh-environments" class="btn btn-primary" type="button">${escapeHtml(t().refreshEnvironments)}</button></div>${source.error ? renderInlineError(source.error) : ""}<div class="table-wrap environment-table"><table><thead><tr><th>${escapeHtml(t().environment)}</th><th>${escapeHtml(t().type)}</th><th>${escapeHtml(t().managed)}</th><th>${escapeHtml(t().region)}</th><th>${escapeHtml(t().resourceCount)}</th><th></th></tr></thead><tbody>${environments.map(environment => `<tr><td class="name-cell"><strong title="${escapeHtml(environment.id)}">${escapeHtml(environment.displayName || t().unknownEnvironment)}</strong></td><td>${escapeHtml(environment.environmentType || "—")}</td><td><span class="status-pill ${environment.isManagedEnvironment ? "status-green" : "status-amber"}">${escapeHtml(environment.isManagedEnvironment ? t().managed : t().notManaged)}</span></td><td>${escapeHtml(environment.location || "—")}</td><td class="number-cell">${environment.resourceCount.toLocaleString(t().locale)}</td><td><div class="row-actions"><button type="button" class="btn btn-small btn-ghost" data-env-resource="${escapeHtml(environment.id)}">${escapeHtml(t().loadEnvironmentResources)}</button><button type="button" class="btn btn-small btn-ghost" data-env-settings="${escapeHtml(environment.id)}">${escapeHtml(t().openSettings)}</button></div></td></tr>`).join("") || `<tr><td colspan="6" class="empty-table">${escapeHtml(t().noData)}</td></tr>`}</tbody></table></div></section>`;
 }
 
+function renderIdentityToolbar() {
+  const ids = identityIdsFromResources();
+  const totalIds = ids.length;
+  const resolved = ids.filter(id => state.identities.byId?.[id]).length;
+  const loading = state.identities.status === "loading";
+  const label = loading ? t().resolvingOwnerNames : resolved ? t().refreshOwnerNames : t().resolveOwnerNames;
+  return `<div class="identity-toolbar"><button id="resolve-identities" class="btn btn-ghost" type="button" ${!totalIds || loading ? "disabled" : ""}>${escapeHtml(label)}</button><span>${escapeHtml(t().identityCoverage.replace("{resolved}", resolved.toLocaleString(t().locale)).replace("{total}", totalIds.toLocaleString(t().locale)))}</span>${state.identities.error ? `<small class="query-error-text">${escapeHtml(getErrorMessage(state.identities.error))}</small>` : ""}</div>`;
+}
 function renderResourcesTab() {
   const detail = state.resourceTab === "all" ? renderQueryCentre(false) : renderSingleResourceQuery(state.resourceTab);
-  return `<section class="section-block inventory-section"><div class="section-heading-row"><div><p class="eyebrow">POWERPLATFORMRESOURCES</p><h1>${escapeHtml(t().resources)}</h1><p>${escapeHtml(t().manualResourcesHelp)}</p></div>${renderExportToolbar()}</div>${detail}${loadedResourceCount() ? `${renderFilters()}<div id="inventory-results">${renderInventoryResults()}</div>` : `<div class="empty-source"><span>＋</span><p>${escapeHtml(t().loadResourcesToExplore)}</p></div>`}</section>`;
+  return `<section class="section-block inventory-section"><div class="section-heading-row"><div><p class="eyebrow">POWERPLATFORMRESOURCES</p><h1>${escapeHtml(t().resources)}</h1><p>${escapeHtml(t().manualResourcesHelp)}</p></div><div class="resource-heading-actions">${renderIdentityToolbar()}${renderExportToolbar()}</div></div>${detail}${loadedResourceCount() ? `${renderFilters()}<div id="inventory-results">${renderInventoryResults()}</div>` : `<div class="empty-source"><span>＋</span><p>${escapeHtml(t().loadResourcesToExplore)}</p></div>`}</section>`;
 }
 function renderSingleResourceQuery(key) {
   const dataset = state.resources[key];
@@ -407,8 +450,8 @@ function renderInventoryResults() {
   if (state.page > totalPages) state.page = totalPages;
   const start = (state.page - 1) * state.pageSize;
   const pageItems = processed.slice(start, start + state.pageSize).map(hydratedResource);
-  const rows = pageItems.map(item => `<tr><td class="name-cell"><button class="resource-link" data-detail="${escapeHtml(item.rowId)}" type="button" title="${escapeHtml(item.id)}">${escapeHtml(item.displayName || item.id || t().unknown)}</button></td><td><span class="type-pill accent-border-${escapeHtml(item.accent)}">${escapeHtml(t()[item.typeKey] ?? t().resourceTypeUnknown)}</span></td><td><span title="${escapeHtml(item.environmentId)}">${escapeHtml(item.environmentName || t().unknownEnvironment)}</span>${item.environmentType ? `<small>${escapeHtml(item.environmentType)}</small>` : ""}</td><td>${escapeHtml(item.location || "—")}</td><td><code title="${escapeHtml(item.ownerId)}">${escapeHtml(item.ownerId ? truncateMiddle(item.ownerId) : "—")}</code></td><td>${escapeHtml(formatDate(item.createdAt, t().locale))}</td><td>${escapeHtml(formatDate(item.lastModifiedAt, t().locale))}</td><td>${renderConnectorAction(item)}</td><td>${item.isQuarantined ? `<span class="status-pill status-red">${escapeHtml(t().quarantinedLabel)}</span>` : `<span class="status-pill status-green">${escapeHtml(t().active)}</span>`}</td></tr>`).join("");
-  const headers = [["displayName", t().name], ["typeKey", t().type], ["environmentName", t().environment], ["location", t().region], ["ownerId", t().owner], ["createdAt", t().created], ["lastModifiedAt", t().modified]];
+  const rows = pageItems.map(item => `<tr><td class="name-cell"><button class="resource-link" data-detail="${escapeHtml(item.rowId)}" type="button" title="${escapeHtml(item.id)}">${escapeHtml(item.displayName || item.id || t().unknown)}</button></td><td><span class="type-pill accent-border-${escapeHtml(item.accent)}">${escapeHtml(t()[item.typeKey] ?? t().resourceTypeUnknown)}</span></td><td><span title="${escapeHtml(item.environmentId)}">${escapeHtml(item.environmentName || t().unknownEnvironment)}</span>${item.environmentType ? `<small>${escapeHtml(item.environmentType)}</small>` : ""}</td><td>${escapeHtml(item.location || "—")}</td><td>${item.ownerDisplayName || item.ownerPrincipalName ? `<strong title="${escapeHtml(item.ownerId)}">${escapeHtml(item.ownerDisplayName || item.ownerPrincipalName)}</strong>${item.ownerPrincipalName && item.ownerPrincipalName !== item.ownerDisplayName ? `<small>${escapeHtml(item.ownerPrincipalName)}</small>` : ""}` : `<code title="${escapeHtml(item.ownerId)}">${escapeHtml(item.ownerId ? truncateMiddle(item.ownerId) : "—")}</code>`}</td><td>${escapeHtml(formatDate(item.createdAt, t().locale))}</td><td>${escapeHtml(formatDate(item.lastModifiedAt, t().locale))}</td><td>${renderConnectorAction(item)}</td><td>${item.isQuarantined ? `<span class="status-pill status-red">${escapeHtml(t().quarantinedLabel)}</span>` : `<span class="status-pill status-green">${escapeHtml(t().active)}</span>`}</td></tr>`).join("");
+  const headers = [["displayName", t().name], ["typeKey", t().type], ["environmentName", t().environment], ["location", t().region], ["ownerDisplayName", t().owner], ["createdAt", t().created], ["lastModifiedAt", t().modified]];
   return `<div class="table-summary"><span>${escapeHtml(t().showing)} <strong>${processed.length ? start + 1 : 0}–${Math.min(start + state.pageSize, processed.length)}</strong> ${escapeHtml(t().of)} <strong>${processed.length.toLocaleString(t().locale)}</strong> ${escapeHtml(t().records)}</span><label>${escapeHtml(t().rowsPerPage)}<select id="page-size"><option value="25" ${state.pageSize === 25 ? "selected" : ""}>25</option><option value="50" ${state.pageSize === 50 ? "selected" : ""}>50</option><option value="100" ${state.pageSize === 100 ? "selected" : ""}>100</option><option value="250" ${state.pageSize === 250 ? "selected" : ""}>250</option></select></label></div><div class="table-wrap"><table><thead><tr>${headers.map(([key, label]) => `<th><button class="sort-button" data-sort="${key}" type="button">${escapeHtml(label)} <span>${sortIndicator(key)}</span></button></th>`).join("")}<th>${escapeHtml(t().connectors)} <span class="connector-help" title="${escapeHtml(t().connectorOnDemandHelp)}" aria-label="${escapeHtml(t().connectorOnDemandHelp)}">?</span></th><th>${escapeHtml(t().status)}</th></tr></thead><tbody>${rows || `<tr><td class="empty-table" colspan="9">${escapeHtml(t().noData)}</td></tr>`}</tbody></table></div><div class="pagination"><button id="page-prev" class="btn btn-small btn-ghost" type="button" ${state.page <= 1 ? "disabled" : ""}>${escapeHtml(t().previous)}</button><span>${state.page} / ${totalPages}</span><button id="page-next" class="btn btn-small btn-ghost" type="button" ${state.page >= totalPages ? "disabled" : ""}>${escapeHtml(t().next)}</button></div>`;
 }
 
@@ -416,14 +459,32 @@ function renderOptionalHeader(title, body, sourceState, buttonId, buttonLabel, b
   const loading = sourceState.status === "loading";
   return `<div class="section-heading-row"><div><p class="eyebrow">ADMINISTRATIVE SOURCE ${badges.map(badge => `· ${escapeHtml(badge)}`).join("")}</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(body)}</p></div><button id="${buttonId}" class="btn ${loading ? "btn-ghost" : "btn-primary"}" type="button">${escapeHtml(loading ? t().cancel : sourceState.status === "loaded" || sourceState.status === "partial" ? t().reload : buttonLabel)}</button></div>${sourceState.progress ? `<div class="inline-progress">${escapeHtml(t().pages)}: ${sourceState.progress.pageNumber ?? 0} · ${escapeHtml(t().recordsLoaded)}: ${Number(sourceState.progress.loadedRecords ?? 0).toLocaleString(t().locale)}</div>` : ""}${sourceState.error ? renderInlineError(sourceState.error) : ""}<p class="optional-source-help">${escapeHtml(t().optionalSourceHelp)}</p>`;
 }
+function governanceAssessmentLabel(assessment) {
+  return t()[assessment] ?? assessment;
+}
+function governanceAssessmentClass(assessment, severity) {
+  if (assessment === "aligned") return "severity-good";
+  if (assessment === "notAligned") return `severity-${severity || "warning"}`;
+  if (assessment === "review") return "severity-info";
+  if (assessment === "informational") return "severity-neutral";
+  return "severity-muted";
+}
 function renderTenantGovernanceTab() {
   const source = state.tenantGovernance;
-  const header = renderOptionalHeader(t().tenantGovernanceTitle, t().tenantGovernanceBody, source, "load-governance", t().loadTenantGovernance, [t().preview]);
+  const loading = source.status === "loading";
+  const sourceLabel = source.sourceType === "file" ? t().importedJson : source.sourceType === "live" ? t().liveApi : source.sourceType === "demo" ? t().demoData : t().notLoaded;
+  const actions = `<div class="governance-actions"><button id="load-governance" class="btn ${loading ? "btn-ghost" : "btn-primary"}" type="button">${escapeHtml(loading ? t().cancel : source.data ? t().reloadLive : t().loadTenantGovernance)}</button><button id="import-governance" class="btn btn-ghost" type="button" ${loading ? "disabled" : ""}>${escapeHtml(t().importTenantSettings)}</button><input id="governance-file" type="file" accept="application/json,.json" hidden />${source.data ? `<button id="export-governance-json" class="btn btn-ghost" type="button">${escapeHtml(t().exportRawJson)}</button><button id="clear-governance" class="text-button" type="button">${escapeHtml(t().clear)}</button>` : ""}</div>`;
+  const header = `<div class="section-heading-row"><div><p class="eyebrow">POWER APPS SERVICE · ${escapeHtml(t().preview)}</p><h1>${escapeHtml(t().tenantGovernanceTitle)}</h1><p>${escapeHtml(t().tenantGovernanceBody)}</p></div>${actions}</div>${source.error ? renderInlineError(source.error) : ""}<div class="governance-controls"><label class="field"><span>${escapeHtml(t().governanceBaseline)}</span><select id="governance-baseline">${Object.keys(GOVERNANCE_BASELINES).map(key => `<option value="${key}" ${source.baseline === key ? "selected" : ""}>${escapeHtml(t()[`baseline_${key}`])}</option>`).join("")}</select></label><div class="source-chip"><span>${escapeHtml(t().dataSource)}</span><strong>${escapeHtml(sourceLabel)}</strong>${source.loadedAt ? `<time>${escapeHtml(formatDate(source.loadedAt, t().locale, true))}</time>` : ""}</div></div><p class="optional-source-help">${escapeHtml(t().tenantGovernanceHelp)}</p>`;
   if (!source.data) return `<section class="section-block">${header}${renderEmptySource()}</section>`;
-  const highlights = getTenantGovernanceHighlights(source.data);
+
+  const assessment = summariseGovernanceAssessment(source.data, source.baseline);
   const all = flattenObject(source.data).filter(entry => !/\[\d+\]/.test(entry.path));
-  return `<section class="section-block">${header}<div class="governance-grid">${highlights.map(item => `<article class="governance-card ${item.healthy === false ? `severity-${item.severity}` : "severity-good"}"><div><strong>${escapeHtml(t()[item.labelKey])}</strong><code>${escapeHtml(item.path)}</code></div><span>${escapeHtml(formatValue(item.value))}</span><small>${escapeHtml(!item.available ? t().unavailable : item.healthy ? t().healthy : t().review)}</small></article>`).join("")}</div><details class="settings-raw"><summary>${escapeHtml(t().fullSettings)} (${all.length})</summary>${renderKeyValueTable(all)}</details></section>`;
+  const categoryOrder = ["environmentProvisioning", "sharingCollaboration", "dlpSecurity", "copilotAi", "licensingCapacity"];
+  const categorySections = categoryOrder.filter(category => assessment.categories[category]?.length).map(category => `<section class="governance-category"><h2>${escapeHtml(t()[category])}</h2><div class="governance-grid">${assessment.categories[category].map(item => `<article class="governance-card ${governanceAssessmentClass(item.assessment, item.severity)}"><div><strong>${escapeHtml(t()[item.labelKey] ?? item.labelKey)}</strong><code>${escapeHtml(item.path)}</code></div><span>${escapeHtml(formatValue(item.value))}</span><small>${escapeHtml(governanceAssessmentLabel(item.assessment))}${item.desired !== undefined ? ` · ${escapeHtml(t().expectedValue)}: ${escapeHtml(formatValue(item.desired))}` : ""}</small></article>`).join("")}</div></section>`).join("");
+
+  return `<section class="section-block">${header}<div class="kpi-grid compact-kpis governance-kpis"><article class="kpi-card accent-indigo"><span>${escapeHtml(t().settingsEvaluated)}</span><strong>${assessment.counts.total}</strong></article><article class="kpi-card accent-teal"><span>${escapeHtml(t().aligned)}</span><strong>${assessment.counts.aligned}</strong></article><article class="kpi-card accent-magenta"><span>${escapeHtml(t().notAligned)}</span><strong>${assessment.counts.notAligned}</strong></article><article class="kpi-card accent-gold"><span>${escapeHtml(t().review)}</span><strong>${assessment.counts.review}</strong></article><article class="kpi-card accent-blue"><span>${escapeHtml(t().unavailable)}</span><strong>${assessment.counts.unavailable}</strong></article></div>${categorySections}<details class="settings-raw"><summary>${escapeHtml(t().fullSettings)} (${all.length})</summary>${renderKeyValueTable(all)}</details></section>`;
 }
+
 function renderDlpTab() {
   const source = state.dlp;
   const header = renderOptionalHeader(t().dlpTitle, t().dlpBody, source, "load-dlp", t().loadDlp, [t().legacy]);
@@ -511,8 +572,14 @@ function bindWorkspaceEvents() {
   document.getElementById("refresh-bootstrap")?.addEventListener("click", () => loadBootstrap({ force: true }));
   document.getElementById("refresh-environments")?.addEventListener("click", () => loadBootstrap({ force: true, only: ["environments", "summary"] }));
   document.getElementById("load-all-types")?.addEventListener("click", loadAllResourceTypes);
+  document.getElementById("resolve-identities")?.addEventListener("click", () => state.identities.status === "loading" ? state.identities.controller?.abort() : resolveIdentityNames({ interactive: true, force: true }));
   document.getElementById("cancel-bulk-query")?.addEventListener("click", () => state.bulkLoad.controller?.abort());
   document.getElementById("load-governance")?.addEventListener("click", () => state.tenantGovernance.status === "loading" ? state.tenantGovernance.controller?.abort() : loadTenantGovernance());
+  document.getElementById("import-governance")?.addEventListener("click", () => document.getElementById("governance-file")?.click());
+  document.getElementById("governance-file")?.addEventListener("change", event => importTenantGovernance(event.target.files?.[0]));
+  document.getElementById("export-governance-json")?.addEventListener("click", () => exportGovernanceJson(state.tenantGovernance.data, { sourceType: state.tenantGovernance.sourceType, baseline: state.tenantGovernance.baseline }));
+  document.getElementById("clear-governance")?.addEventListener("click", clearTenantGovernance);
+  document.getElementById("governance-baseline")?.addEventListener("change", event => changeGovernanceBaseline(event.target.value));
   document.getElementById("load-dlp")?.addEventListener("click", () => state.dlp.status === "loading" ? state.dlp.controller?.abort() : loadDlp());
   document.getElementById("environment-settings-select")?.addEventListener("change", event => {
     state.environmentSettings = { ...emptySourceState(), selectedId: event.target.value, details: null, settings: null, groups: {}, detailsError: null, settingsError: null };
@@ -589,10 +656,11 @@ function resetData() {
   };
   state.resources = makeResourceStates();
   state.detailCache = {};
+  state.identities = emptyIdentityState();
   state.bulkLoad = { status: "idle", currentKey: "", completed: 0, total: 0, controller: null, error: null };
 }
 function resetOptionalSources() {
-  state.tenantGovernance = { ...emptySourceState(), data: null };
+  state.tenantGovernance = { ...emptySourceState(), data: null, sourceType: "", baseline: loadGovernanceBaseline() };
   state.dlp = { ...emptySourceState(), raw: [], policies: [] };
   state.environmentSettings = { ...emptySourceState(), selectedId: "", details: null, settings: null, groups: {}, detailsError: null, settingsError: null };
 }
@@ -612,7 +680,8 @@ function enterDemoMode() {
   resetOptionalSources();
   state.demo = true;
   state.account = { username: "demo.admin@contoso.com", tenantId: "11111111-2222-4333-8444-555555555555" };
-  const all = normaliseInventory(demoRawItems);
+  state.identities = { ...emptyIdentityState(), status: "loaded", byId: demoIdentityDirectory, attemptedIds: Object.keys(demoIdentityDirectory), loadedAt: new Date() };
+  const all = normaliseInventory(demoRawItems, [], demoIdentityDirectory);
   const env = all.filter(item => item.category === "platform");
   const resources = all.filter(item => item.category !== "platform");
   state.bootstrap.summary = { ...emptySourceState(), status: "loaded", data: buildDemoSummary(all), loadedAt: new Date() };
@@ -622,7 +691,7 @@ function enterDemoMode() {
     const subset = resources.filter(item => item.typeKey === key);
     state.resources[key] = { ...emptyResourceState(), status: "loaded", raw: subset.map(item => item.raw), items: subset, totalRecords: subset.length, complete: true, loadedAt: new Date() };
   }
-  state.tenantGovernance = { ...emptySourceState(), status: "loaded", data: demoTenantSettings, loadedAt: new Date() };
+  state.tenantGovernance = { ...emptySourceState(), status: "loaded", data: demoTenantSettings, loadedAt: new Date(), sourceType: "demo", baseline: loadGovernanceBaseline() };
   state.dlp = { ...emptySourceState(), status: "loaded", raw: demoDlpPolicies, policies: normaliseDlpPolicies(demoDlpPolicies), loadedAt: new Date() };
   state.error = null;
   renderApp();
@@ -644,19 +713,43 @@ async function restoreCache() {
   if (!tenantId() || state.demo) return;
   state.cacheRestoring = true;
   try {
-    const [summaryCache, envCache, recentCache, ...resourceCaches] = await Promise.all([
+    const [identityCache, governanceCache, summaryCache, envCache, recentCache, ...resourceCaches] = await Promise.all([
+      getCachedDataset(tenantId(), "identities"),
+      getCachedDataset(tenantId(), "tenant-governance"),
       getCachedDataset(tenantId(), "summary"),
       getCachedDataset(tenantId(), "environments"),
       getCachedDataset(tenantId(), "recent"),
       ...RESOURCE_TAB_KEYS.map(key => getCachedDataset(tenantId(), `resources:${key}`))
     ]);
+    if (identityCache?.byId) {
+      state.identities = {
+        ...emptyIdentityState(),
+        status: "loaded",
+        byId: identityCache.byId,
+        unresolved: identityCache.unresolved ?? [],
+        attemptedIds: identityCache.attemptedIds ?? Object.keys(identityCache.byId),
+        loadedAt: identityCache.loadedAt,
+        fromCache: true
+      };
+    }
+    if (governanceCache?.data) {
+      state.tenantGovernance = {
+        ...emptySourceState(),
+        status: "loaded",
+        data: governanceCache.data,
+        loadedAt: governanceCache.loadedAt,
+        fromCache: true,
+        sourceType: governanceCache.sourceType ?? "live",
+        baseline: governanceCache.baseline ?? loadGovernanceBaseline()
+      };
+    }
     if (summaryCache?.data) state.bootstrap.summary = { ...emptySourceState(), status: "loaded", data: summaryCache.data, loadedAt: summaryCache.loadedAt, fromCache: true };
     if (envCache?.raw) {
       const items = normaliseInventory(envCache.raw);
       state.bootstrap.environments = { ...emptySourceState(), status: "loaded", raw: envCache.raw, items, loadedAt: envCache.loadedAt, fromCache: true };
     }
     if (recentCache?.raw) {
-      state.bootstrap.recent = { ...emptySourceState(), status: "loaded", raw: recentCache.raw, items: normaliseInventory(recentCache.raw, environmentItems()), loadedAt: recentCache.loadedAt, fromCache: true };
+      state.bootstrap.recent = { ...emptySourceState(), status: "loaded", raw: recentCache.raw, items: normaliseResources(recentCache.raw), loadedAt: recentCache.loadedAt, fromCache: true };
     }
     RESOURCE_TAB_KEYS.forEach((key, index) => {
       const cache = resourceCaches[index];
@@ -665,7 +758,7 @@ async function restoreCache() {
         ...emptyResourceState(),
         status: cache.complete ? "loaded" : "partial",
         raw: cache.raw,
-        items: normaliseInventory(cache.raw, environmentItems()),
+        items: normaliseResources(cache.raw),
         totalRecords: cache.totalRecords,
         skipToken: cache.skipToken ?? "",
         pageNumber: cache.pageNumber ?? 0,
@@ -700,6 +793,25 @@ async function cacheResource(key) {
     loadedAt: source.loadedAt
   }).catch(error => console.warn("Cache write failed", error));
 }
+async function cacheIdentities() {
+  if (state.demo || !tenantId()) return;
+  await setCachedDataset(tenantId(), "identities", {
+    byId: state.identities.byId,
+    unresolved: state.identities.unresolved,
+    attemptedIds: state.identities.attemptedIds,
+    loadedAt: state.identities.loadedAt
+  }).catch(error => console.warn("Identity cache write failed", error));
+}
+async function cacheTenantGovernance() {
+  if (state.demo || !tenantId() || !state.tenantGovernance.data) return;
+  await setCachedDataset(tenantId(), "tenant-governance", {
+    data: state.tenantGovernance.data,
+    sourceType: state.tenantGovernance.sourceType,
+    baseline: state.tenantGovernance.baseline,
+    loadedAt: state.tenantGovernance.loadedAt
+  }).catch(error => console.warn("Governance cache write failed", error));
+}
+
 async function clearCurrentTenantCache() {
   if (!tenantId() || state.demo) return;
   await clearTenantCache(tenantId());
@@ -739,11 +851,11 @@ async function loadBootstrap({ force = false, only = BOOTSTRAP_KEYS } = {}) {
           const raw = result.value.items;
           state.bootstrap.environments = { ...emptySourceState(), status: "loaded", raw, items: normaliseInventory(raw), loadedAt };
           // Re-resolve environment names in already loaded datasets.
-          state.bootstrap.recent.items = normaliseInventory(state.bootstrap.recent.raw ?? [], environmentItems());
-          for (const resourceKey of RESOURCE_TAB_KEYS) state.resources[resourceKey].items = normaliseInventory(state.resources[resourceKey].raw, environmentItems());
+          state.bootstrap.recent.items = normaliseResources(state.bootstrap.recent.raw ?? []);
+          for (const resourceKey of RESOURCE_TAB_KEYS) state.resources[resourceKey].items = normaliseResources(state.resources[resourceKey].raw);
         } else {
           const raw = result.value.data;
-          state.bootstrap.recent = { ...emptySourceState(), status: "loaded", raw, items: normaliseInventory(raw, environmentItems()), loadedAt };
+          state.bootstrap.recent = { ...emptySourceState(), status: "loaded", raw, items: normaliseResources(raw), loadedAt };
         }
         await cacheBootstrap(key);
       } else {
@@ -751,6 +863,7 @@ async function loadBootstrap({ force = false, only = BOOTSTRAP_KEYS } = {}) {
         state.bootstrap[key] = { ...state.bootstrap[key], status: "error", error, controller: null };
       }
     }
+    await resolveIdentityNames({ interactive: false, suppressRender: true });
   } catch (error) {
     if (error?.name !== "AbortError") state.error = normaliseError(error);
   } finally {
@@ -795,21 +908,22 @@ async function loadResourceDataset(key, mode = "first", { token = null, external
         }
       });
       const raw = result.items;
-      state.resources[key] = { ...emptyResourceState(), status: "loaded", raw, items: normaliseInventory(raw, environmentItems()), totalRecords: result.totalRecords ?? expectedCount(key), pageNumber: (dataset.pageNumber || 0) + result.pageNumber, complete: true, loadedAt: new Date() };
+      state.resources[key] = { ...emptyResourceState(), status: "loaded", raw, items: normaliseResources(raw), totalRecords: result.totalRecords ?? expectedCount(key), pageNumber: (dataset.pageNumber || 0) + result.pageNumber, complete: true, loadedAt: new Date() };
     } else {
       const page = await queryResourceTypePage(accessToken, key, { signal: controller.signal, skipToken: mode === "next" ? dataset.skipToken : "" });
       const raw = mode === "next" ? [...dataset.raw, ...page.data] : page.data;
       const complete = !page.skipToken;
-      state.resources[key] = { ...emptyResourceState(), status: complete ? "loaded" : "partial", raw, items: normaliseInventory(raw, environmentItems()), totalRecords: page.totalRecords ?? expectedCount(key), skipToken: page.skipToken, pageNumber: mode === "next" ? dataset.pageNumber + 1 : 1, complete, loadedAt: new Date() };
+      state.resources[key] = { ...emptyResourceState(), status: complete ? "loaded" : "partial", raw, items: normaliseResources(raw), totalRecords: page.totalRecords ?? expectedCount(key), skipToken: page.skipToken, pageNumber: mode === "next" ? dataset.pageNumber + 1 : 1, complete, loadedAt: new Date() };
     }
     await cacheResource(key);
+    await resolveIdentityNames({ interactive: false, suppressRender: true });
   } catch (error) {
     if (error?.name === "AbortError") {
       state.resources[key] = { ...state.resources[key], status: state.resources[key].raw.length ? "partial" : "idle", controller: null };
     } else {
       const partial = error?.partial;
       const raw = partial?.items ?? state.resources[key].raw;
-      state.resources[key] = { ...state.resources[key], status: raw.length ? "partial" : "error", raw, items: normaliseInventory(raw, environmentItems()), skipToken: partial?.skipToken ?? state.resources[key].skipToken, totalRecords: partial?.totalRecords ?? state.resources[key].totalRecords, pageNumber: partial?.pageNumber ?? state.resources[key].pageNumber, error: normaliseError(error), controller: null, loadedAt: raw.length ? new Date() : state.resources[key].loadedAt };
+      state.resources[key] = { ...state.resources[key], status: raw.length ? "partial" : "error", raw, items: normaliseResources(raw), skipToken: partial?.skipToken ?? state.resources[key].skipToken, totalRecords: partial?.totalRecords ?? state.resources[key].totalRecords, pageNumber: partial?.pageNumber ?? state.resources[key].pageNumber, error: normaliseError(error), controller: null, loadedAt: raw.length ? new Date() : state.resources[key].loadedAt };
       if (raw.length) await cacheResource(key);
     }
   } finally {
@@ -857,19 +971,122 @@ async function loadAllResourceTypes() {
   }
 }
 
+async function resolveIdentityNames({ interactive = true, force = false, suppressRender = false } = {}) {
+  if (state.demo) return;
+  const allIds = identityIdsFromResources();
+  const attempted = new Set(state.identities.attemptedIds ?? []);
+  const pendingIds = force ? allIds : allIds.filter(id => !attempted.has(id));
+  if (!pendingIds.length) {
+    if (interactive) showToast(allIds.length ? t().identityNamesUpToDate : t().noIdentityIds);
+    return;
+  }
+
+  const previous = state.identities;
+  const controller = new AbortController();
+  state.identities = { ...previous, status: "loading", error: null, controller, progress: null, fromCache: false };
+  if (!suppressRender) renderApp();
+  try {
+    const token = await acquireGraphUserToken({ interactive });
+    if (!token) return;
+    const result = await queryDirectoryUsers(token, pendingIds, {
+      signal: controller.signal,
+      onProgress: progress => {
+        state.identities.progress = progress;
+        if (!suppressRender) renderApp();
+      }
+    });
+    const byId = { ...previous.byId };
+    for (const user of result.users) byId[user.id.toLowerCase()] = user;
+    const unresolvedById = new Map((previous.unresolved ?? []).map(item => [item.id, item]));
+    for (const item of result.unresolved) unresolvedById.set(item.id, item);
+    for (const user of result.users) unresolvedById.delete(user.id.toLowerCase());
+    state.identities = {
+      ...emptyIdentityState(),
+      status: "loaded",
+      byId,
+      unresolved: [...unresolvedById.values()],
+      attemptedIds: [...new Set([...(previous.attemptedIds ?? []), ...pendingIds])],
+      loadedAt: new Date()
+    };
+    refreshIdentityHydration();
+    await cacheIdentities();
+    if (interactive) showToast(t().identityResolutionComplete.replace("{count}", result.users.length.toLocaleString(t().locale)));
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      state.identities = { ...previous, controller: null };
+    } else if (!interactive && /interaction_required|consent_required|login_required/i.test(String(error?.errorCode ?? error?.message ?? ""))) {
+      state.identities = { ...previous, controller: null };
+    } else {
+      state.identities = { ...previous, status: previous.loadedAt ? "loaded" : "error", error: normaliseError(error), controller: null };
+    }
+  } finally {
+    state.identities.controller = null;
+    if (!suppressRender) renderApp();
+  }
+}
+
+function normaliseTenantSettingsPayload(payload) {
+  if (Array.isArray(payload?.objectResult)) return payload.objectResult[0] ?? {};
+  if (payload?.objectResult && typeof payload.objectResult === "object") return payload.objectResult;
+  if (payload?.settings && typeof payload.settings === "object") return payload.settings;
+  if (Array.isArray(payload?.value) && payload.value.length === 1 && typeof payload.value[0] === "object") return payload.value[0];
+  return payload && typeof payload === "object" ? payload : {};
+}
+
 async function loadTenantGovernance() {
   const controller = new AbortController();
-  state.tenantGovernance = { ...state.tenantGovernance, status: "loading", error: null, controller, progress: null };
+  const baseline = state.tenantGovernance.baseline ?? loadGovernanceBaseline();
+  state.tenantGovernance = { ...state.tenantGovernance, status: "loading", error: null, controller, progress: null, baseline };
   renderApp();
   try {
-    const data = state.demo ? demoTenantSettings : await queryTenantSettings(await acquireBapToken(), { signal: controller.signal });
-    state.tenantGovernance = { ...emptySourceState(), status: "loaded", data, loadedAt: new Date() };
+    const raw = state.demo ? demoTenantSettings : await queryTenantSettings(await acquireBapToken(), { signal: controller.signal });
+    const data = normaliseTenantSettingsPayload(raw);
+    state.tenantGovernance = { ...emptySourceState(), status: "loaded", data, loadedAt: new Date(), sourceType: state.demo ? "demo" : "live", baseline };
+    await cacheTenantGovernance();
   } catch (error) {
     if (error?.name === "AbortError") state.tenantGovernance = { ...state.tenantGovernance, status: state.tenantGovernance.data ? "loaded" : "idle", controller: null };
     else state.tenantGovernance = { ...state.tenantGovernance, status: state.tenantGovernance.data ? "partial" : "error", error: normaliseError(error), controller: null };
   }
   renderApp();
 }
+
+async function importTenantGovernance(file) {
+  if (!file) return;
+  try {
+    const text = (await file.text()).replace(/^\uFEFF/, "");
+    const data = normaliseTenantSettingsPayload(JSON.parse(text));
+    if (!data || typeof data !== "object" || Array.isArray(data) || !Object.keys(data).length) throw new Error(t().invalidTenantSettingsFile);
+    state.tenantGovernance = {
+      ...emptySourceState(),
+      status: "loaded",
+      data,
+      loadedAt: new Date(),
+      sourceType: "file",
+      baseline: state.tenantGovernance.baseline ?? loadGovernanceBaseline()
+    };
+    await cacheTenantGovernance();
+    showToast(t().tenantSettingsImported);
+  } catch (error) {
+    state.tenantGovernance = { ...state.tenantGovernance, status: state.tenantGovernance.data ? "loaded" : "error", error: normaliseError(error) };
+  }
+  renderApp();
+}
+
+async function clearTenantGovernance() {
+  const baseline = state.tenantGovernance.baseline ?? loadGovernanceBaseline();
+  state.tenantGovernance = { ...emptySourceState(), data: null, sourceType: "", baseline };
+  if (!state.demo && tenantId()) await deleteCachedDataset(tenantId(), "tenant-governance").catch(() => {});
+  renderApp();
+}
+
+async function changeGovernanceBaseline(value) {
+  if (!GOVERNANCE_BASELINES[value]) return;
+  state.tenantGovernance.baseline = value;
+  localStorage.setItem(STORAGE_KEYS.governanceBaseline, value);
+  await cacheTenantGovernance();
+  renderApp();
+}
+
 async function loadDlp() {
   const controller = new AbortController();
   state.dlp = { ...state.dlp, status: "loading", error: null, controller, progress: null };
@@ -997,6 +1214,8 @@ async function handlePdfExport() {
       tenantId: tenantId() || "—",
       lastRefreshAt: latestRefresh(),
       tenantSettings: state.tenantGovernance.data,
+      governanceBaseline: state.tenantGovernance.baseline,
+      tenantSettingsSource: state.tenantGovernance.sourceType,
       dlpPolicies: state.dlp.policies,
       environmentSettings: state.environmentSettings.details || state.environmentSettings.settings ? state.environmentSettings : null
     });
@@ -1021,7 +1240,7 @@ async function showResourceDetails(rowId) {
     const token = await acquireInventoryToken();
     if (!token) return;
     const raw = await queryResourceDetail(token, base.type, base.id);
-    const normalisedDetail = raw ? normaliseInventory([raw], environmentItems())[0] : base;
+    const normalisedDetail = raw ? normaliseResources([raw])[0] : base;
     const detail = { ...base, ...normalisedDetail, rowId: base.rowId, connectorDataLoaded: true };
     state.detailCache[cacheKey] = detail;
     renderDetailModal(detail, { loading: false });
@@ -1038,7 +1257,7 @@ function renderDetailModal(item, { loading = false, error = null } = {}) {
       : item.connectors.length
         ? item.connectors.map(connector => `<li><strong>${escapeHtml(connector.connectorId)}</strong>${connector.operations.length ? `<span>${escapeHtml(connector.operations.join(", "))}</span>` : ""}</li>`).join("")
         : `<li>${escapeHtml(t().noConnectorData)}</li>`;
-  document.getElementById("modal-root").innerHTML = `<div class="modal-backdrop" id="detail-modal"><div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="detail-title"><button id="close-modal" class="modal-close" type="button" aria-label="${escapeHtml(t().close)}">×</button><p class="eyebrow">${escapeHtml(t()[item.typeKey] ?? t().resourceTypeUnknown)}</p><h2 id="detail-title">${escapeHtml(item.displayName || item.id)}</h2>${error ? renderInlineError(error) : ""}<div class="detail-grid"><div><span>${escapeHtml(t().resourceId)}</span><code>${escapeHtml(item.id || "—")}</code></div><div><span>${escapeHtml(t().environment)}</span><strong>${escapeHtml(item.environmentName || "—")}</strong></div><div><span>${escapeHtml(t().environmentId)}</span><code>${escapeHtml(item.environmentId || "—")}</code></div><div><span>${escapeHtml(t().region)}</span><strong>${escapeHtml(item.location || "—")}</strong></div><div><span>${escapeHtml(t().owner)}</span><code>${escapeHtml(item.ownerId || "—")}</code></div><div><span>${escapeHtml(t().createdBy)}</span><code>${escapeHtml(item.createdBy || "—")}</code></div><div><span>${escapeHtml(t().created)}</span><strong>${escapeHtml(formatDate(item.createdAt, t().locale, true))}</strong></div><div><span>${escapeHtml(t().modified)}</span><strong>${escapeHtml(formatDate(item.lastModifiedAt, t().locale, true))}</strong></div></div><h3>${escapeHtml(t().connectors)} <span class="preview-badge">${escapeHtml(t().preview)}</span></h3><ul class="modal-connectors">${connectorDetails}</ul></div></div>`;
+  document.getElementById("modal-root").innerHTML = `<div class="modal-backdrop" id="detail-modal"><div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="detail-title"><button id="close-modal" class="modal-close" type="button" aria-label="${escapeHtml(t().close)}">×</button><p class="eyebrow">${escapeHtml(t()[item.typeKey] ?? t().resourceTypeUnknown)}</p><h2 id="detail-title">${escapeHtml(item.displayName || item.id)}</h2>${error ? renderInlineError(error) : ""}<div class="detail-grid"><div><span>${escapeHtml(t().resourceId)}</span><code>${escapeHtml(item.id || "—")}</code></div><div><span>${escapeHtml(t().environment)}</span><strong>${escapeHtml(item.environmentName || "—")}</strong></div><div><span>${escapeHtml(t().environmentId)}</span><code>${escapeHtml(item.environmentId || "—")}</code></div><div><span>${escapeHtml(t().region)}</span><strong>${escapeHtml(item.location || "—")}</strong></div><div><span>${escapeHtml(t().owner)}</span><strong>${escapeHtml(identityLabel(item) || "—")}</strong>${item.ownerId ? `<code>${escapeHtml(item.ownerId)}</code>` : ""}</div><div><span>${escapeHtml(t().createdBy)}</span><strong>${escapeHtml(identityLabel(item, "createdBy") || "—")}</strong>${item.createdBy ? `<code>${escapeHtml(item.createdBy)}</code>` : ""}</div><div><span>${escapeHtml(t().created)}</span><strong>${escapeHtml(formatDate(item.createdAt, t().locale, true))}</strong></div><div><span>${escapeHtml(t().modified)}</span><strong>${escapeHtml(formatDate(item.lastModifiedAt, t().locale, true))}</strong></div></div><h3>${escapeHtml(t().connectors)} <span class="preview-badge">${escapeHtml(t().preview)}</span></h3><ul class="modal-connectors">${connectorDetails}</ul></div></div>`;
   const close = () => { document.getElementById("modal-root").innerHTML = ""; };
   document.getElementById("close-modal")?.addEventListener("click", close);
   document.getElementById("detail-modal")?.addEventListener("click", event => { if (event.target.id === "detail-modal") close(); });

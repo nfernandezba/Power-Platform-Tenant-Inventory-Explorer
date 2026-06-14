@@ -6,7 +6,7 @@ Validation performed on 14 June 2026 for public version **v1.0**.
 
 - JavaScript version-policy validation: passed.
 - Unit test files: **6 passed**.
-- Unit tests: **36 passed**.
+- Unit tests: **40 passed**.
 - Vite production build: passed.
 - Production dependency audit: **0 known vulnerabilities**.
 - Public-version policy: **v1.0 / package 1.0.0**.
@@ -31,7 +31,9 @@ The automated suite covers:
 - Cache schema v3, which invalidates incompatible GUID-only cached datasets.
 - Inventory pagination, timeout, retry, cancellation, and API error handling.
 - DLP normalisation.
-- Tenant-setting flattening and assessment.
+- Tenant-setting flattening, baseline selection, categorisation, and read-only assessment.
+- Microsoft Graph user lookup batching in groups of 20, resolved basic-profile mapping, and unresolved-identity fallback.
+- Owner, creator, and last-modified-by display-name normalisation while retaining raw object IDs.
 - Environment-count and Environment Settings grouping logic.
 - CSV and PDF export helpers.
 - Local book-cover embedding in the executive PDF.
@@ -44,10 +46,10 @@ The production output is available in `dist/` with relative asset paths suitable
 
 Build summary:
 
-- `dist/index.html`: approximately **1.78 KB**.
-- Main CSS: approximately **34.46 KB**.
-- Main JavaScript: approximately **350.65 KB**.
-- Lazy PDF bundle: approximately **416.11 KB**.
+- `dist/index.html`: approximately **1.84 KB**.
+- Main CSS: approximately **36.44 KB**.
+- Main JavaScript: approximately **370.76 KB**.
+- Lazy PDF bundle: approximately **416.55 KB**.
 - Production source maps: disabled.
 - Asset references in `index.html`: verified.
 - Local NFBA logo: included.
@@ -56,10 +58,12 @@ Build summary:
 
 ## PDF validation
 
-A five-page Spanish sample report was generated from the production PDF code and rendered to PNG at 160 DPI.
+A six-page Spanish sample report was generated from the production PDF code and rendered to PNG at 180 DPI.
 
-The final page was visually inspected and confirmed to show:
+Pages 4, 5, and 6 were visually inspected and confirmed to show:
 
+- Tenant Governance baseline and source metadata, DLP summary, and Environment Settings without clipping.
+- Resolved owner display names in the inventory appendix with GUID fallback only where no directory user was available.
 - The Spanish Copilot Studio cover supplied by the repository owner.
 - The complete title, subtitle, edition, and author area without cropping.
 - The original portrait aspect ratio without stretching.
@@ -89,9 +93,12 @@ The build environment cannot access the repository owner's tenant. Validate the 
 15. Partial results remain visible and are labelled partial after a later-page failure.
 16. IndexedDB restores compatible cache schema v3 datasets after a reload.
 17. **Clear cache** removes persistent data for the current Tenant ID.
-18. Environment Management, Tenant Governance, and DLP sources continue to fail independently without blocking inventory.
-19. CSV, JSON, and PDF exports correctly distinguish aggregate totals from loaded detail.
-20. The SPA and PDF both show the new Copilot Studio cover for the selected language after a hard refresh.
+18. Microsoft Graph `User.ReadBasic.All` resolves user object IDs to display names and UPNs in batches, while service principals, teams, deleted users, or unreadable objects retain the GUID fallback.
+19. Live Tenant Governance loads with the delegated Power Apps Service `User` permission, or the same analysis can be produced from a locally imported JSON file when the preview endpoint or browser policy blocks the live request.
+20. Changing the governance baseline changes only the local assessment and does not update the tenant.
+21. Environment Management, Tenant Governance, DLP, and Microsoft Graph identity sources continue to fail independently without blocking inventory.
+22. CSV, JSON, and PDF exports correctly distinguish aggregate totals from loaded detail and use resolved directory names when available.
+23. The SPA and PDF both show the new Copilot Studio cover for the selected language after a hard refresh.
 
 ## Browser visual validation note
 

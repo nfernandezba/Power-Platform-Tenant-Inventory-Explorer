@@ -13,7 +13,11 @@ export function exportCsv(items) {
     "Environment ID",
     "Environment Type",
     "Region",
+    "Owner Name",
+    "Owner Principal Name",
     "Owner ID",
+    "Created By Name",
+    "Created By Principal Name",
     "Created By",
     "Created At",
     "Last Modified At",
@@ -31,7 +35,11 @@ export function exportCsv(items) {
     item.environmentId,
     item.environmentType,
     item.location,
+    item.ownerDisplayName,
+    item.ownerPrincipalName,
     item.ownerId,
+    item.createdByDisplayName,
+    item.createdByPrincipalName,
     item.createdBy,
     item.createdAt,
     item.lastModifiedAt,
@@ -53,4 +61,15 @@ export function exportJson(items) {
     records: cleanItems
   }, null, 2);
   downloadBlob(`power-platform-inventory-${dateForFilename()}.json`, content, "application/json;charset=utf-8");
+}
+
+
+export function exportGovernanceJson(settings, { sourceType = "", baseline = "balanced" } = {}) {
+  const content = JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    sourceType,
+    baseline,
+    settings
+  }, null, 2);
+  downloadBlob(`power-platform-tenant-governance-${dateForFilename()}.json`, content, "application/json;charset=utf-8");
 }

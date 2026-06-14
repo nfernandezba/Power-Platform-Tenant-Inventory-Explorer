@@ -11,7 +11,8 @@ export const POWER_PLATFORM_SCOPES = Object.freeze({
 
 // The legacy Business Application Platform resource is still used by the
 // published tenant-settings preview endpoint and the admin DLP surface.
-export const BAP_SCOPE = "https://api.bap.microsoft.com/.default";
+export const POWER_APPS_SERVICE_SCOPE = "https://service.powerapps.com//User";
+export const GRAPH_USER_BASIC_SCOPE = "https://graph.microsoft.com/User.ReadBasic.All";
 
 export const ENDPOINTS = Object.freeze({
   inventory: "https://api.powerplatform.com/resourcequery/resources/query?api-version=2024-10-01",
@@ -19,7 +20,8 @@ export const ENDPOINTS = Object.freeze({
   environmentDetails: environmentId => `https://api.powerplatform.com/environmentmanagement/environments/${encodeURIComponent(environmentId)}?api-version=2024-10-01`,
   environmentSettings: environmentId => `https://api.powerplatform.com/environmentmanagement/environments/${encodeURIComponent(environmentId)}/settings?api-version=2024-10-01`,
   tenantSettings: "https://api.bap.microsoft.com/providers/Microsoft.BusinessAppPlatform/listtenantsettings?api-version=2020-10-01",
-  dlpPolicies: "https://api.bap.microsoft.com/providers/Microsoft.BusinessAppPlatform/scopes/admin/apiPolicies?api-version=2016-11-01"
+  dlpPolicies: "https://api.bap.microsoft.com/providers/Microsoft.BusinessAppPlatform/scopes/admin/apiPolicies?api-version=2016-11-01",
+  graphBatch: "https://graph.microsoft.com/v1.0/$batch"
 });
 
 export const INVENTORY_SCOPE = POWER_PLATFORM_SCOPES.inventory;
@@ -28,8 +30,52 @@ export const INVENTORY_ENDPOINT = ENDPOINTS.inventory;
 export const STORAGE_KEYS = {
   sessionConfig: "pp-inventory.session-config",
   rememberedConfig: "pp-inventory.remembered-config",
-  language: "pp-inventory.language"
+  language: "pp-inventory.language",
+  governanceBaseline: "pp-inventory.governance-baseline"
 };
+
+
+export const GOVERNANCE_BASELINES = Object.freeze({
+  balanced: Object.freeze({
+    key: "balanced",
+    expectations: Object.freeze({
+      disableEnvironmentCreationByNonAdminUsers: true,
+      disableTrialEnvironmentCreationByNonAdminUsers: true,
+      "powerPlatform.governance.disableDeveloperEnvironmentCreationByNonAdminUsers": false,
+      disablePortalsCreationByNonAdminUsers: true,
+      "powerPlatform.powerApps.disableShareWithEveryone": true,
+      "powerPlatform.powerApps.DisableConnectionSharingWithEveryone": true,
+      "powerPlatform.powerApps.enableGuestsToMake": false,
+      "powerPlatform.governance.policy.enableDesktopFlowDataPolicyManagement": true
+    })
+  }),
+  restrictive: Object.freeze({
+    key: "restrictive",
+    expectations: Object.freeze({
+      disableEnvironmentCreationByNonAdminUsers: true,
+      disableTrialEnvironmentCreationByNonAdminUsers: true,
+      "powerPlatform.governance.disableDeveloperEnvironmentCreationByNonAdminUsers": true,
+      disablePortalsCreationByNonAdminUsers: true,
+      "powerPlatform.powerApps.disableShareWithEveryone": true,
+      "powerPlatform.powerApps.DisableConnectionSharingWithEveryone": true,
+      "powerPlatform.powerApps.enableGuestsToMake": false,
+      "powerPlatform.governance.policy.enableDesktopFlowDataPolicyManagement": true
+    })
+  }),
+  innovation: Object.freeze({
+    key: "innovation",
+    expectations: Object.freeze({
+      disableEnvironmentCreationByNonAdminUsers: true,
+      disableTrialEnvironmentCreationByNonAdminUsers: true,
+      "powerPlatform.governance.disableDeveloperEnvironmentCreationByNonAdminUsers": false,
+      disablePortalsCreationByNonAdminUsers: false,
+      "powerPlatform.powerApps.disableShareWithEveryone": true,
+      "powerPlatform.powerApps.DisableConnectionSharingWithEveryone": true,
+      "powerPlatform.powerApps.enableGuestsToMake": false,
+      "powerPlatform.governance.policy.enableDesktopFlowDataPolicyManagement": true
+    })
+  })
+});
 
 export const RESOURCE_TYPES = Object.freeze({
   "microsoft.powerapps/canvasapps": { key: "canvasApps", category: "apps", accent: "blue" },

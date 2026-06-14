@@ -286,7 +286,8 @@ export async function requestJson(accessToken, url, {
   signal,
   maxRetries = 4,
   timeoutMs = INVENTORY_QUERY.requestTimeoutMs,
-  headers = {}
+  headers = {},
+  serviceName = "Power Platform API"
 } = {}) {
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     const requestSignal = createRequestSignal(signal, timeoutMs);
@@ -340,7 +341,7 @@ export async function requestJson(accessToken, url, {
     }
 
     const { correlationId, details } = await parseErrorResponse(response);
-    throw new InventoryApiError(`Power Platform API returned HTTP ${response.status}.`, {
+    throw new InventoryApiError(`${serviceName} returned HTTP ${response.status}.`, {
       status: response.status,
       code: errorCode(response.status),
       details,
@@ -500,11 +501,61 @@ export async function queryAllInventory(accessToken, { signal, onProgress } = {}
 export async function queryTenantSettings(accessToken, { signal } = {}) {
   return requestJson(accessToken, ENDPOINTS.tenantSettings, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     signal,
     maxRetries: 2,
-    timeoutMs: INVENTORY_QUERY.adminTimeoutMs
+    timeoutMs: INVENTORY_QUERY.adminTimeoutMs,
+    serviceName: "Power Platform tenant settings API"
   });
+}
+
+export async function queryDirectoryUsers(accessToken, objectIds, { signal, onProgress } = {}) {
+  const uniqueIds = [...new Set((objectIds ?? []).map(value => String(value ?? "").trim().toLowerCase()).filter(Boolean))];
+  const users = [];
+  const unresolved = [];
+  const batchSize = 20;
+
+  for (let offset = 0; offset < uniqueIds.length; offset += batchSize) {
+    const ids = uniqueIds.slice(offset, offset + batchSize);
+    const requests = ids.map((id, index) => ({
+      id: String(index + 1),
+      method: "GET",
+      url: `/users/${encodeURIComponent(id)}?$select=id,displayName,userPrincipalName,mail`
+    }));
+    const response = await requestJson(accessToken, ENDPOINTS.graphBatch, {
+      method: "POST",
+      body: { requests },
+      signal,
+      maxRetries: 2,
+      timeoutMs: INVENTORY_QUERY.adminTimeoutMs,
+      serviceName: "Microsoft Graph"
+    });
+    const byRequestId = new Map(requests.map((request, index) => [request.id, ids[index]]));
+    for (const item of Array.isArray(response?.responses) ? response.responses : []) {
+      const requestedId = byRequestId.get(String(item?.id)) ?? "";
+      if (item?.status >= 200 && item?.status < 300 && item?.body?.id) {
+        users.push({
+          id: String(item.body.id).toLowerCase(),
+          displayName: String(item.body.displayName ?? ""),
+          userPrincipalName: String(item.body.userPrincipalName ?? ""),
+          mail: String(item.body.mail ?? "")
+        });
+      } else if (requestedId) {
+        unresolved.push({
+          id: requestedId,
+          status: Number(item?.status ?? 0),
+          message: String(item?.body?.error?.message ?? "")
+        });
+      }
+    }
+    onProgress?.({
+      processed: Math.min(offset + batchSize, uniqueIds.length),
+      total: uniqueIds.length,
+      resolved: users.length,
+      unresolved: unresolved.length
+    });
+  }
+
+  return { users, unresolved };
 }
 
 export async function queryDlpPolicies(accessToken, { signal, onProgress } = {}) {

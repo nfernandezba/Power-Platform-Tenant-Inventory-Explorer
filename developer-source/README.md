@@ -112,12 +112,13 @@ The detailed inventory supports:
 - Filtering by resource type.
 - Filtering by environment.
 - Filtering by region.
-- Filtering by owner identifier.
+- Filtering by resolved owner name, user principal name, or object identifier.
 - Created-from and created-to date filters.
 - Sorting.
 - Browser-side table pagination.
 - Resource details.
 - Stable display-name, environment, owner/creator, created-date, and modified-date fields from projected aliases.
+- Optional Microsoft Graph identity resolution for owner, creator, and last-modified-by object IDs, using delegated `User.ReadBasic.All`.
 - An explicit **Load** action in the Connectors column for supported resources.
 - Connector identifiers and operation IDs retrieved through a one-resource detail query.
 - Trigger connector and trigger operation where available.
@@ -126,7 +127,9 @@ The detailed inventory supports:
 
 ### Tenant Governance
 
-Tenant Governance is loaded manually and presents selected Power Platform tenant settings in a readable table.
+Tenant Governance is loaded manually and presents selected Power Platform tenant settings in a readable, read-only assessment. The live query uses the legacy Power Apps Service delegated `User` permission and the Microsoft preview `listtenantsettings` endpoint. Because the endpoint can be affected by CORS, tenant policy, or preview availability, the same view also supports importing a tenant-settings JSON file produced with PAC CLI or PowerShell.
+
+The administrator can choose one of three local assessment baselines without changing the tenant: **Balanced governance**, **Restrictive enterprise**, or **Controlled innovation**. The selected baseline affects only the advisory comparison shown by the application.
 
 The view can evaluate settings related to areas such as:
 
@@ -142,7 +145,7 @@ The view can evaluate settings related to areas such as:
 - Capacity report access.
 - Copilot-related controls when returned by the endpoint.
 
-The assessment signal is advisory. The raw setting path and returned value remain visible so that administrators can distinguish Microsoft data from the application's interpretation.
+The assessment signal is advisory. Each result separates the Microsoft setting path and current value from the selected baseline and application interpretation. The view also shows the data source (`Live API`, `Imported JSON`, or `Demo data`) and supports exporting the raw tenant-settings JSON. No setting can be changed from the SPA.
 
 ### DLP Policies
 
@@ -438,6 +441,7 @@ The application visibly identifies which source supports each section.
 | Overview | Power Platform Inventory API | `PowerPlatformResources` | Automatic lightweight query |
 | Environments | Power Platform Inventory API | `PowerPlatformResources` | Automatic lightweight query |
 | Resources | Power Platform Inventory API | `PowerPlatformResources` | Manual by resource type |
+| Identity names | Microsoft Graph | `/v1.0/$batch` and `/users/{id}` | Manual or silent when consent already exists |
 | Tenant Governance | Business Application Platform API | `listtenantsettings` | Manual |
 | DLP Policies | Business Application Platform administrative API | `apiPolicies` | Manual |
 | Environment Settings | Power Platform Environment Management API | Environment details and settings | Manual per environment |
@@ -466,7 +470,7 @@ GET https://api.powerplatform.com/environmentmanagement/environments/{environmen
 POST https://api.bap.microsoft.com/providers/Microsoft.BusinessAppPlatform/listtenantsettings?api-version=2020-10-01
 ```
 
-This Microsoft endpoint is documented as preview and can change.
+This Microsoft endpoint is documented as preview and can change. The request is made without a body and uses a delegated Power Apps Service token. JSON import is available as a fallback.
 
 ### DLP endpoint
 
@@ -484,6 +488,7 @@ The browser application only connects to the required Microsoft hosts:
 login.microsoftonline.com
 api.powerplatform.com
 api.bap.microsoft.com
+graph.microsoft.com
 ```
 
 Users cannot provide arbitrary API endpoints or token audiences through the interface.
@@ -543,15 +548,31 @@ https://api.powerplatform.com/EnvironmentManagement.Environments.Read
 https://api.powerplatform.com/EnvironmentManagement.Settings.Read
 ```
 
-### Business Application Platform token
+### Power Apps Service permission for Tenant Governance and DLP
 
-Tenant Governance and DLP request a token for:
+Add **Power Apps Service** using Application ID:
 
 ```text
-https://api.bap.microsoft.com/.default
+475226c6-020e-4fb2-8a90-7a972cbfc1d4
 ```
 
-The token is requested only when one of those tabs is loaded. An additional Microsoft consent or authentication prompt may therefore appear.
+Select the delegated `User` permission (**Access the Power Apps Service API**). Tenant Governance and DLP request the following runtime scope only when those tabs are loaded:
+
+```text
+https://service.powerapps.com//User
+```
+
+An additional Microsoft consent or authentication prompt may therefore appear. No client secret is used.
+
+### Microsoft Graph permission for owner names
+
+Inventory API returns owner and author fields as object IDs. To resolve user object IDs to a basic profile, add the delegated Microsoft Graph permission:
+
+```text
+User.ReadBasic.All
+```
+
+The application batches up to 20 user lookups per Microsoft Graph request and caches only the returned basic identity fields: object ID, display name, user principal name, and mail. Unresolved service principals, teams, deleted users, or inaccessible identities remain visible as GUIDs.
 
 ### Administrative roles
 
@@ -640,7 +661,25 @@ EnvironmentManagement.Settings.Read
 
 These permissions are not required to use the core inventory.
 
-### 5. Review consent and Conditional Access
+### 5. Add Power Apps Service for Tenant Governance and DLP
+
+1. Select **Add a permission > APIs my organisation uses**.
+2. Search for **Power Apps Service**.
+3. Confirm Application ID `475226c6-020e-4fb2-8a90-7a972cbfc1d4`.
+4. Select **Delegated permissions**.
+5. Add `User — Access the Power Apps Service API`.
+6. Grant administrative consent when required.
+
+### 6. Add Microsoft Graph for identity names
+
+1. Select **Add a permission > Microsoft Graph**.
+2. Select **Delegated permissions**.
+3. Add `User.ReadBasic.All`.
+4. Grant administrative consent when required.
+
+This permission is optional for core inventory loading, but required to replace owner, creator, and last-modified-by GUIDs with user display names.
+
+### 7. Review consent and Conditional Access
 
 Validate:
 
@@ -688,6 +727,7 @@ For an initial assessment, a practical sequence is:
 3. Load the first page of Copilot Studio agents.
 4. Review counts and governance signals.
 5. Load all remaining pages only for the types needed for the report.
+6. Select **Resolve owner names** to request Microsoft Graph consent and replace resolvable user GUIDs with display names.
 
 ### 6. Review an environment
 
@@ -700,7 +740,7 @@ Open **Environments** and choose:
 
 Open:
 
-- **Tenant Governance** and select the load action.
+- **Tenant Governance** and select **Load Tenant Governance** for a live query, or **Import JSON** to analyse a local tenant-settings export.
 - **DLP Policies** and select the load action.
 - **Environment Settings**, select an environment, and load it.
 
@@ -733,8 +773,10 @@ Columns include:
 - Environment ID.
 - Environment type.
 - Region.
+- Owner display name and user principal name when resolved.
 - Owner ID.
-- Created by.
+- Created-by display name and user principal name when resolved.
+- Created by object ID.
 - Created at.
 - Last modified at.
 - Managed Environment indicator.
@@ -1255,6 +1297,7 @@ Microsoft currently documents limitations that can affect interpretation, includ
 - Connector inventory is a preview capability and can be incomplete. It is emitted only for the resource types documented by Microsoft; unsupported types show **Not available**.
 - Modified date and last-modified-by information can be unavailable for agents.
 - The owner shown for cloud flows and agent flows can represent the creator rather than a later owner change.
+- Identity resolution covers Microsoft Entra users through `User.ReadBasic.All`. Service principals, teams, deleted users, or objects not readable as users remain as GUIDs.
 - Only published model-driven apps are included.
 - Some preinstalled model-driven apps in the Default Environment may not appear until edited and republished.
 - Classic chatbots are not included in the new inventory.
@@ -1265,7 +1308,7 @@ Microsoft currently documents limitations that can affect interpretation, includ
 ### Application limitations
 
 - The SPA depends on browser CORS access to Microsoft endpoints.
-- Tenant Governance uses a preview endpoint.
+- Tenant Governance uses a preview endpoint and can require the JSON import fallback when CORS or tenant policy blocks direct browser access.
 - DLP retrieval uses an administrative endpoint treated as legacy/best effort.
 - DLP response shapes may vary.
 - The application does not calculate authoritative DLP impact across every connector default-group rule.
@@ -1375,7 +1418,7 @@ The application applies a request-level timeout. When an issue persists:
 
 ### Tenant Governance or DLP requests additional consent
 
-This is expected because those views request the Business Application Platform token only when selected.
+This is expected because those views request the delegated Power Apps Service token only when selected.
 
 Ensure pop-ups are allowed for the site.
 
@@ -1384,6 +1427,7 @@ Ensure pop-ups are allowed for the site.
 Possible causes include:
 
 - Insufficient role.
+- Missing Power Apps Service delegated `User` permission.
 - Consent restrictions.
 - Endpoint changes.
 - Preview/legacy availability.

@@ -9,7 +9,8 @@
     "check:version": "node scripts/check-version.mjs",
     "build": "npm run check:version && vite build",
     "preview": "vite preview",
-    "test": "npm run check:version && vitest run"
+    "test": "npm run check:version && vitest run",
+    "sample:pdf": "node scripts/generate-sample-report.mjs SAMPLE_REPORT.pdf"
   },
   "dependencies": {
     "@azure/msal-browser": "5.13.0",

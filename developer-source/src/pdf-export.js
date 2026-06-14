@@ -214,6 +214,8 @@ export function createInventoryPdf(items, options = {}) {
     logoData = null,
     now = new Date(),
     tenantSettings = null,
+    governanceBaseline = "balanced",
+    tenantSettingsSource = "",
     dlpPolicies = [],
     environmentSettings = null,
     bookCoverData = []
@@ -485,20 +487,27 @@ export function createInventoryPdf(items, options = {}) {
 
     if (tenantSettings) {
       section(p.tenantGovernance, colours.indigo);
-      const highlights = getTenantGovernanceHighlights(tenantSettings).filter(item => item.available);
+      const highlights = getTenantGovernanceHighlights(tenantSettings, governanceBaseline).filter(item => item.available);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.8);
+      setText(colours.muted);
+      doc.text(pdfSafe(`${strings.governanceBaseline ?? "Baseline"}: ${strings[`baseline_${governanceBaseline}`] ?? governanceBaseline}${tenantSettingsSource ? ` · ${strings.dataSource ?? "Source"}: ${strings[tenantSettingsSource === "file" ? "importedJson" : tenantSettingsSource === "live" ? "liveApi" : "demoData"] ?? tenantSettingsSource}` : ""}`), M, y);
+      y += 5;
       const width = (contentW - 5) / 2;
       highlights.slice(0, 8).forEach((item, index) => {
         const top = y + Math.floor(index / 2) * 21;
         const x = M + (index % 2) * (width + 5);
-        setFill(item.healthy ? [238, 250, 248] : [255, 248, 231]);
-        setDraw(item.healthy ? colours.teal : colours.gold);
+        const aligned = item.assessment === "aligned";
+        const notAligned = item.assessment === "notAligned";
+        setFill(aligned ? [238, 250, 248] : notAligned ? [255, 239, 244] : [255, 248, 231]);
+        setDraw(aligned ? colours.teal : notAligned ? colours.red : colours.gold);
         doc.roundedRect(x, top, width, 17, 2, 2, "FD");
         doc.setFont("helvetica", "bold");
         doc.setFontSize(7.2);
         setText(colours.ink);
         doc.text(wrap(strings[item.labelKey] ?? item.labelKey, width - 17).slice(0, 2), x + 3, top + 5);
         doc.setFontSize(8.5);
-        setText(item.healthy ? colours.teal : colours.gold);
+        setText(aligned ? colours.teal : notAligned ? colours.red : colours.gold);
         doc.text(pdfSafe(String(item.value)), x + width - 3, top + 9, { align: "right" });
       });
       y += Math.ceil(Math.min(8, highlights.length) / 2) * 21 + 5;
@@ -590,7 +599,7 @@ export function createInventoryPdf(items, options = {}) {
         type: displayType(item, strings),
         environment: item.environmentName || item.environmentId || "-",
         region: item.location || "-",
-        owner: item.ownerId ? truncateMiddle(item.ownerId, 7, 5) : "-",
+        owner: item.ownerDisplayName || item.ownerPrincipalName || (item.ownerId ? truncateMiddle(item.ownerId, 7, 5) : "-"),
         modified: formatDate(item.lastModifiedAt, locale),
         status: item.isQuarantined ? p.quarantined : p.active
       };
