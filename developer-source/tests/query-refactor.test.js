@@ -43,6 +43,26 @@ describe("modular inventory queries", () => {
     expect(createRecentQuery(20).Clauses.find(clause => clause.$type === "take").TakeCount).toBe(20);
   });
 
+  it("sorts by simple aliases before projection to avoid tenant-side HTTP 400 errors", () => {
+    const environmentClauses = createEnvironmentQuery().Clauses;
+    const environmentOrderIndex = environmentClauses.findIndex(clause => clause.$type === "orderby");
+    const environmentProjectIndex = environmentClauses.findIndex(clause => clause.$type === "project");
+    expect(environmentClauses[environmentOrderIndex].FieldNamesAscDesc).toEqual({ displayNameSort: "asc" });
+    expect(environmentOrderIndex).toBeLessThan(environmentProjectIndex);
+
+    const recentClauses = createRecentQuery(20).Clauses;
+    const recentOrderIndex = recentClauses.findIndex(clause => clause.$type === "orderby");
+    const recentProjectIndex = recentClauses.findIndex(clause => clause.$type === "project");
+    expect(recentClauses[recentOrderIndex].FieldNamesAscDesc).toEqual({ modifiedDate: "desc" });
+    expect(recentOrderIndex).toBeLessThan(recentProjectIndex);
+
+    const resourceClauses = createResourceTypeQuery("cloudFlows").Clauses;
+    const resourceOrderIndex = resourceClauses.findIndex(clause => clause.$type === "orderby");
+    const resourceProjectIndex = resourceClauses.findIndex(clause => clause.$type === "project");
+    expect(resourceClauses[resourceOrderIndex].FieldNamesAscDesc).toEqual({ modifiedDate: "desc" });
+    expect(resourceOrderIndex).toBeLessThan(resourceProjectIndex);
+  });
+
   it("creates independent resource type and detail queries", () => {
     const list = createResourceTypeQuery("cloudFlows", "next");
     expect(list.Options.SkipToken).toBe("next");

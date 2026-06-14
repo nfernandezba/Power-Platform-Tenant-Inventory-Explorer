@@ -1,7 +1,5 @@
 # Power Platform Tenant Inventory Explorer
 
-> **Complete manual GitHub Pages package:** the production site is located at the repository root so it can be published with `main` + `/(root)`. The complete Vite source, tests, workflow, and build scripts are included under [`developer-source/`](./developer-source/).
-
 ![Version](https://img.shields.io/badge/version-v1.0-5552B4)
 ![Deployment](https://img.shields.io/badge/deployment-GitHub%20Pages-3895FF)
 ![Authentication](https://img.shields.io/badge/authentication-Microsoft%20Entra%20ID-27B8C6)
@@ -1310,6 +1308,8 @@ Use that information to determine which dataset failed. Typical examples are:
 
 If only `overview-summary-by-environment` fails, the application continues with the main summary and the tenant can still be explored. For any other HTTP 400, copy the service message, correlation ID, query name, and request body before opening an issue.
 
+A specific `overview-environments` error mentioning `properties.displayName`, `Operator_FailedToResolveEntity`, or `InvalidExpressionKey` means the service attempted to sort by a nested property after projection. The corrected v1.0 build creates a simple `displayNameSort` alias, orders by that alias, and projects the environment fields afterwards. Recent-resource and per-resource-type queries use equivalent `modifiedDate` aliases before projection.
+
 ### Overview loads but a detailed type fails
 
 - Retry the selected dataset.
@@ -1380,6 +1380,8 @@ assets/book-covers/copilot-studio-coe-en.jpg
 ```
 
 Upload the complete `assets` folder rather than only the JavaScript and CSS files.
+
+The Copilot Studio covers use a 4:5 thumbnail ratio in both the web interface and PDF. Images are displayed with `object-fit: contain`, so the complete supplied cover artwork remains visible rather than being cropped to a narrower frame.
 
 ### Old version remains visible after deployment
 

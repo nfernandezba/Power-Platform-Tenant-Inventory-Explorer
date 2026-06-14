@@ -62,7 +62,7 @@ repository/
 Utiliza este mensaje:
 
 ```text
-Fix Power Platform API HTTP 400 compatibility and diagnostics
+Fix environment query sorting and Copilot Studio book thumbnails
 ```
 
 Selecciona **Commit directly to the main branch** y pulsa **Commit changes**.
@@ -93,11 +93,11 @@ También puedes abrir una ventana privada.
 1. Confirma que la interfaz muestra **v1.0**.
 2. Conecta el tenant.
 3. Comprueba que el resumen por tipo y región carga.
-4. Si aparece HTTP 400, abre **Detalles** y revisa el nombre de la consulta y el mensaje del servicio.
+4. Confirma que `overview-environments` ya no devuelve el error de ordenación sobre `properties.displayName`; si aparece otro HTTP 400, abre **Detalles** y revisa el nombre de la consulta y el mensaje del servicio.
 5. Verifica que un fallo en `overview-summary-by-environment` no bloquee los KPIs principales.
 6. Carga manualmente un tipo de recurso.
 7. Exporta CSV, JSON y PDF.
-8. Comprueba las portadas de los libros en el PDF.
+8. Comprueba que las portadas de Copilot Studio se muestran completas, sin recortes ni deformación, tanto en la web como en el PDF.
 
 ## Microsoft Entra
 

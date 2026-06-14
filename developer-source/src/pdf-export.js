@@ -638,8 +638,8 @@ export function createInventoryPdf(items, options = {}) {
   const books = BOOKS[language] ?? BOOKS.en;
   books.forEach((book, index) => {
     const cardHeight = 43;
-    const coverWidth = 22;
-    const coverHeight = 31;
+    const coverWidth = 24;
+    const coverHeight = 30;
     ensure(cardHeight + 7);
     const top = y;
     const coverX = M + 6;

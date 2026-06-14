@@ -135,8 +135,9 @@ export function createEnvironmentQuery(skipToken = "") {
           quote("microsoft.powerplatform/environmentgroups")
         ]
       },
-      { $type: "project", FieldList: ENVIRONMENT_FIELDS },
-      { $type: "orderby", FieldNamesAscDesc: { "properties.displayName": "asc" } }
+      { $type: "extend", FieldName: "displayNameSort", Expression: "tolower(tostring(properties.displayName))" },
+      { $type: "orderby", FieldNamesAscDesc: { displayNameSort: "asc" } },
+      { $type: "project", FieldList: ENVIRONMENT_FIELDS }
     ],
     Options: options(skipToken)
   };
@@ -148,8 +149,9 @@ export function createRecentQuery(limit = INVENTORY_QUERY.recentLimit) {
     TableName: "PowerPlatformResources",
     Clauses: [
       { $type: "where", FieldName: "type", Operator: "in~", Values: resourceTypes.map(quote) },
+      { $type: "extend", FieldName: "modifiedDate", Expression: "todatetime(properties.lastModifiedAt)" },
+      { $type: "orderby", FieldNamesAscDesc: { modifiedDate: "desc" } },
       { $type: "project", FieldList: BASIC_RESOURCE_FIELDS },
-      { $type: "orderby", FieldNamesAscDesc: { "tostring(properties.lastModifiedAt)": "desc" } },
       { $type: "take", TakeCount: limit }
     ],
     Options: options("", limit)
@@ -170,8 +172,9 @@ export function createResourceTypeQuery(resourceTypeOrKey, skipToken = "", { env
     });
   }
   clauses.push(
-    { $type: "project", FieldList: includeDetails ? DETAIL_RESOURCE_FIELDS : BASIC_RESOURCE_FIELDS },
-    { $type: "orderby", FieldNamesAscDesc: { "tostring(properties.lastModifiedAt)": "desc" } }
+    { $type: "extend", FieldName: "modifiedDate", Expression: "todatetime(properties.lastModifiedAt)" },
+    { $type: "orderby", FieldNamesAscDesc: { modifiedDate: "desc" } },
+    { $type: "project", FieldList: includeDetails ? DETAIL_RESOURCE_FIELDS : BASIC_RESOURCE_FIELDS }
   );
   return {
     TableName: "PowerPlatformResources",
@@ -223,7 +226,8 @@ export function createInventoryQuery(skipToken = "") {
         RightColumnName: "joinKey"
       },
       { $type: "where", FieldName: "type", Operator: "in~", Values: QUERY_RESOURCE_TYPES.map(quote) },
-      { $type: "orderby", FieldNamesAscDesc: { "tostring(properties.createdAt)": "desc" } }
+      { $type: "extend", FieldName: "createdDate", Expression: "todatetime(properties.createdAt)" },
+      { $type: "orderby", FieldNamesAscDesc: { createdDate: "desc" } }
     ]
   };
 }

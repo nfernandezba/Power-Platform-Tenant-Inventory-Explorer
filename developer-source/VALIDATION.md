@@ -6,7 +6,7 @@ Validation performed on 14 June 2026 for public version 1.0.
 
 - JavaScript syntax validation: passed for all source and test files.
 - Unit test files: 6 passed.
-- Unit tests: 31 passed.
+- Unit tests: 33 passed.
 - Vite production build: passed.
 - Production dependency audit: 0 known vulnerabilities in production dependencies.
 
@@ -16,9 +16,9 @@ Validation performed on 14 June 2026 for public version 1.0.
 - Optional environment-count aggregation isolation and non-fatal HTTP 400 fallback.
 - Inventory Query Options clamped to a maximum of 1,000 records.
 - HTTP 400 diagnostics including query name, endpoint, correlation ID, and safe request body.
-- Environment query construction.
-- Recent-resource query construction.
-- Per-resource-type query construction.
+- Environment query construction with a simple sort alias before projection.
+- Recent-resource query construction with a simple date alias before projection.
+- Per-resource-type query construction with a simple date alias before projection.
 - Summary-row normalisation.
 - Tenant-scoped and versioned cache keys.
 - Existing inventory pagination and API error handling.
@@ -27,6 +27,7 @@ Validation performed on 14 June 2026 for public version 1.0.
 - Environment-count and setting-group logic.
 - CSV and PDF export helpers.
 - Embedded local book-cover assets in the executive PDF.
+- Full 4:5 book-cover thumbnail ratio in the application and PDF, using `object-fit: contain` to prevent cropping.
 - Public-version policy fixed at v1.0.
 
 ## Production build
@@ -39,7 +40,7 @@ Build summary:
 
 - `dist/index.html`: approximately 1.78 KB.
 - Main CSS: approximately 32.70 KB.
-- Main JavaScript: approximately 342.78 KB.
+- Main JavaScript: approximately 343.01 KB.
 - Lazy PDF bundle: approximately 416.06 KB.
 - Asset references in `index.html`: verified against files in `dist/`.
 
@@ -66,7 +67,7 @@ No Microsoft tenant was available in the build environment. Validate the followi
 
 ## PDF visual validation
 
-A five-page Spanish sample report was generated from the production PDF code, rendered to PNG and inspected page by page. The final page shows both book-cover images as embedded graphics, with no clipping, overlap or missing-image placeholders. The cover files are served from the same GitHub Pages origin and converted to image data before PDF generation, so the export no longer depends on Amazon image delivery or cross-origin image permissions.
+A five-page Spanish sample report was generated from the production PDF code, rendered to PNG and inspected page by page. The final page shows both book-cover images as embedded graphics, using the full 4:5 cover ratio with no clipping, distortion, overlap or missing-image placeholders. The cover files are served from the same GitHub Pages origin and converted to image data before PDF generation, so the export no longer depends on Amazon image delivery or cross-origin image permissions.
 
 ## SPA visual validation limitation
 

@@ -21,6 +21,16 @@ describe("PDF export", () => {
     expect(BOOKS.en.every(book => book.cover.startsWith("./assets/book-covers/"))).toBe(true);
   });
 
+
+  it("preserves the full 4:5 book-cover aspect ratio in web and PDF thumbnails", () => {
+    const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+    const pdfSource = readFileSync(new URL("../src/pdf-export.js", import.meta.url), "utf8");
+    expect(css).toContain(".book-cover-wrap { width: 96px; height: 120px;");
+    expect(css).toContain("object-fit: contain");
+    expect(pdfSource).toContain("const coverWidth = 24;");
+    expect(pdfSource).toContain("const coverHeight = 30;");
+  });
+
   it("embeds book-cover images in the PDF when provided", () => {
     const items = normaliseInventory(demoRawItems);
     const coverPaths = [
