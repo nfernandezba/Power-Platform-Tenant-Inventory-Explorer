@@ -34,6 +34,10 @@ Read-only browser application for exploring Power Platform tenant inventory, Man
     └── sample-download-results.json
 ```
 
+## Initial connection hero
+
+The connection screen follows the centered CoE Toolkit hero standard: a local 78 × 78 SVG appears directly above the single primary H1, without a label, glow, shadow, radial background, animation, or decorative halo. The hero is centred within a 900px maximum-width container and retains the same responsive behaviour in Spanish and English.
+
 ## Test mode
 
 Open the deployed URL with `?test=1` or `?mode=test` to load a completed demonstration dataset and the report-ready experience without Microsoft Entra authentication.

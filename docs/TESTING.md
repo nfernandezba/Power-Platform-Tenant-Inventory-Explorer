@@ -21,6 +21,17 @@ Expected behaviour:
 - Tenant Governance, DLP and Managed Environment Settings are available.
 - The page exposes the current-report export and packaged sample-report download.
 
+## Connection hero contract
+
+On the unauthenticated connection screen, verify:
+
+- Exactly one primary H1 is present.
+- The local `assets/icons/coe-toolkit-logo.svg` appears directly above the H1.
+- No “CoE Toolkit” text appears between the icon and title.
+- The icon is 78 × 78 pixels and has no glow, shadow, background effect, filter, or animation.
+- The hero is centred in a maximum-width 900px container.
+- Spanish and English use the same structure and allow the title to wrap naturally.
+
 ## Evidence files
 
 - `tests/static-validation.json`: structural, path and version checks.
